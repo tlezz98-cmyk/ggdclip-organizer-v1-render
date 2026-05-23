@@ -1,0 +1,25 @@
+{
+  "sheetUrl": "https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/edit",
+  "sourceRoot": "D:\\Videos",
+  "destinationRoot": "D:\\Prepared Clips",
+  "defaultMode": "hardlink",
+  "lastScan": "not scanned yet",
+  "manualRescan": true,
+  "writeMode": "preview-only",
+  "onlineMode": false,
+  "requireLogin": true,
+  "allowedEmails": [
+    "suntzu.tutor.official@gmail.com",
+    "tlezz98@gmail.com"
+  ],
+  "googleOAuth": {
+    "clientId": "",
+    "clientSecret": "",
+    "redirectUri": "http://127.0.0.1:8787/auth/google/callback"
+  },
+  "googleServiceAccount": {
+    "clientEmail": "",
+    "privateKey": "",
+    "projectId": ""
+  }
+}

@@ -1,0 +1,6 @@
+﻿Sunwu Course Organizer V2 - Render Ready
+Built: 2026-05-21
+
+Upload/deploy this folder to replace the existing Render app.
+Do not upload local config.json, .scan-index.json, .env, or Google key files.
+Render should keep environment variables for GOOGLE_SERVICE_ACCOUNT_EMAIL and GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY.

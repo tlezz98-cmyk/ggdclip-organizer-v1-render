@@ -1,0 +1,17 @@
+node_modules/
+npm-debug.log*
+
+# Local runtime data
+config.json
+.scan-index.json
+server.log
+server.err.log
+
+# Secrets
+.env
+*.pem
+*service-account*.json
+google-credentials*.json
+
+# Release packages
+release/*.zip

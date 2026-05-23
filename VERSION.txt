@@ -1,0 +1,18 @@
+Sunwu Course Organizer V2
+Built: 2026-05-21
+Latest sync: 2026-05-23
+
+Core features:
+- Google Sheet curriculum loading
+- Read-only local video scan
+- Manual rescan
+- Manual clip search
+- Explorer reveal source
+- Hard Link creation
+- Subject folder output structure
+- Dry-run, boundary check, orphan report
+- No source deletion, no overwrite
+- V2 dashboard-first UX
+- Work queue, workflow steps, status badges, note per subject, CSV export
+- Safe Mode and grouped actions for team use
+- Subject-to-position search: "ค้นตำแหน่งจากวิชา"

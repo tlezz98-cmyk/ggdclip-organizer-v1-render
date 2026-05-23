@@ -1,0 +1,25 @@
+{
+  "sheetUrl": "https://docs.google.com/spreadsheets/d/1w3UnbOTHRnbQkDi0idVailoBrZKJfK_3YficVo4ZeJ8/edit",
+  "sourceRoot": "",
+  "destinationRoot": "",
+  "defaultMode": "hardlink",
+  "lastScan": "online mode",
+  "manualRescan": true,
+  "writeMode": "preview-only",
+  "onlineMode": true,
+  "requireLogin": false,
+  "allowedEmails": [
+    "suntzu.tutor.official@gmail.com",
+    "tlezz98@gmail.com"
+  ],
+  "googleOAuth": {
+    "clientId": "",
+    "clientSecret": "",
+    "redirectUri": "https://your-domain.com/auth/google/callback"
+  },
+  "googleServiceAccount": {
+    "clientEmail": "",
+    "privateKey": "",
+    "projectId": ""
+  }
+}
