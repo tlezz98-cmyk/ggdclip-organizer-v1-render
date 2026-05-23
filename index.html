@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="th">
 <head>
   <meta charset="utf-8">
@@ -223,7 +223,7 @@
     body.auth-required .setup,
     body.auth-required main.workspace { display: none; }
     body.online-mode .setup {
-      grid-template-columns: minmax(320px, 1.3fr) auto minmax(260px, .9fr) auto;
+      grid-template-columns: max-content auto minmax(260px, 1fr) auto;
     }
     body.online-mode .online-hide { display: none !important; }
 
@@ -238,7 +238,7 @@
       top: 72px;
       z-index: 25;
       display: grid;
-      grid-template-columns: minmax(260px, 1.2fr) auto minmax(180px, .7fr) minmax(190px, .8fr) minmax(190px, .8fr) auto auto;
+      grid-template-columns: max-content auto minmax(180px, .7fr) minmax(190px, .8fr) minmax(190px, .8fr) auto auto;
       gap: 12px;
       align-items: end;
       padding: 14px 20px;
@@ -264,6 +264,55 @@
       color: var(--text);
       background: white;
       outline: none;
+    }
+
+    #sheetUrl,
+    #docSheetUrl {
+      text-overflow: ellipsis;
+    }
+
+    .sheet-url-field {
+      align-self: end;
+    }
+
+    .sheet-url-field label {
+      display: none;
+    }
+
+    .sheet-url-field:not(.is-editing) .sheet-url-editor {
+      display: none;
+    }
+
+    .sheet-url-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 36px;
+    }
+
+    .sheet-url-actions button {
+      white-space: nowrap;
+    }
+
+    .sheet-url-actions .text-button {
+      min-height: 32px;
+      padding: 0 4px;
+      border-color: transparent;
+      background: transparent;
+      color: #1d4ed8;
+      font-weight: 600;
+    }
+
+    .sheet-url-actions .text-button:hover {
+      background: transparent;
+      border-color: transparent;
+      color: #1e40af;
+    }
+
+    .sheet-url-field.is-editing {
+      display: grid;
+      gap: 8px;
+      min-width: min(520px, calc(100vw - 40px));
     }
 
     .control:focus {
@@ -1734,15 +1783,15 @@
     @media (max-width: 1500px) {
       .setup {
         position: static;
-        grid-template-columns: minmax(260px, 1fr) auto minmax(220px, .8fr) minmax(220px, .8fr);
+        grid-template-columns: max-content auto minmax(220px, .8fr) minmax(220px, .8fr);
       }
 
       .setup > .field:first-child {
-        grid-column: span 2;
+        grid-column: auto;
       }
 
       body.online-mode .setup {
-        grid-template-columns: minmax(260px, 1fr) auto minmax(220px, .8fr) auto;
+        grid-template-columns: max-content auto minmax(220px, 1fr) auto;
       }
 
       .side-panel {
@@ -1943,9 +1992,13 @@
     </section>
 
     <section class="setup" aria-label="ตั้งค่างาน">
-      <div class="field">
+      <div class="field sheet-url-field" id="sheetUrlField">
         <label for="sheetUrl">Google Sheet</label>
-        <input id="sheetUrl" class="control" value="https://docs.google.com/spreadsheets/d/1w3UnbOTHRnbQkDi0idVailoBrZKJfK_3YficVo4ZeJ8/edit">
+        <input id="sheetUrl" class="control sheet-url-editor" value="https://docs.google.com/spreadsheets/d/1w3UnbOTHRnbQkDi0idVailoBrZKJfK_3YficVo4ZeJ8/edit">
+        <div class="sheet-url-actions">
+          <button id="openSheetButton" type="button">เปิดชีต</button>
+          <button id="editSheetButton" class="text-button" type="button">แก้ไขชีต</button>
+        </div>
       </div>
       <button id="loadPositionsButton">โหลดตำแหน่ง</button>
       <div class="field">
@@ -3722,6 +3775,47 @@
       if (note) note.style.display = online ? "" : "none";
       const loadSubjectsButton = document.getElementById("loadSubjectsButton");
       if (loadSubjectsButton) loadSubjectsButton.textContent = online ? "ดูรายวิชา" : "โหลดรายวิชา";
+    }
+
+    function setSheetEditorOpen(open) {
+      const field = document.getElementById("sheetUrlField");
+      const input = document.getElementById("sheetUrl");
+      const editButton = document.getElementById("editSheetButton");
+      field.classList.toggle("is-editing", open);
+      editButton.textContent = open ? "บันทึกชีต" : "แก้ไขชีต";
+      if (open) {
+        setTimeout(() => input.focus(), 0);
+      }
+    }
+
+    function openConfiguredSheet() {
+      const sheetUrl = document.getElementById("sheetUrl").value.trim();
+      if (!sheetUrl) {
+        setStatus("สถานะ: ยังไม่มีลิงก์ Google Sheet");
+        setSheetEditorOpen(true);
+        return;
+      }
+      window.open(sheetUrl, "_blank", "noopener");
+    }
+
+    async function toggleSheetEditor() {
+      const field = document.getElementById("sheetUrlField");
+      if (!field.classList.contains("is-editing")) {
+        setSheetEditorOpen(true);
+        return;
+      }
+      appConfig.sheetUrl = document.getElementById("sheetUrl").value.trim();
+      setSheetEditorOpen(false);
+      if (!appConfig.sheetUrl) {
+        setStatus("สถานะ: ล้างลิงก์ Google Sheet แล้ว");
+        return;
+      }
+      try {
+        if (location.protocol !== "file:") await saveConfigFromForm();
+        setStatus("สถานะ: บันทึกลิงก์ Google Sheet แล้ว");
+      } catch {
+        setStatus("สถานะ: เก็บลิงก์ Google Sheet ในหน้านี้แล้ว");
+      }
     }
 
     async function saveConfigFromForm() {
@@ -6011,6 +6105,19 @@
     });
 
     document.getElementById("scanButton").addEventListener("click", runManualScan);
+    document.getElementById("openSheetButton").addEventListener("click", openConfiguredSheet);
+    document.getElementById("editSheetButton").addEventListener("click", () => {
+      toggleSheetEditor().catch(error => setStatus(`สถานะ: บันทึกลิงก์ชีตไม่สำเร็จ - ${error.message}`));
+    });
+    document.getElementById("sheetUrl").addEventListener("keydown", event => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        toggleSheetEditor().catch(error => setStatus(`สถานะ: บันทึกลิงก์ชีตไม่สำเร็จ - ${error.message}`));
+      }
+      if (event.key === "Escape") {
+        setSheetEditorOpen(false);
+      }
+    });
     document.getElementById("loadPositionsButton").addEventListener("click", loadPositionsFromSheet);
     document.getElementById("loadSubjectsButton").addEventListener("click", loadSubjectsForPosition);
     document.getElementById("position").addEventListener("change", () => {
