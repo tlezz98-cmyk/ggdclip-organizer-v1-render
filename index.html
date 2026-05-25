@@ -966,6 +966,56 @@
       line-height: 1.55;
     }
 
+    .trial-form {
+      display: grid;
+      gap: 12px;
+      padding: 16px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .textarea-control {
+      width: 100%;
+      min-height: 180px;
+      resize: vertical;
+      border: 1px solid var(--line-strong);
+      border-radius: 6px;
+      padding: 10px;
+      color: var(--text);
+      background: white;
+      outline: none;
+      line-height: 1.45;
+    }
+
+    .readiness-verdict {
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfe;
+      display: grid;
+      gap: 6px;
+    }
+
+    .readiness-verdict.good { background: var(--soft-green); border-color: #a9dec0; }
+    .readiness-verdict.warn { background: var(--soft-yellow); border-color: #f0c46b; }
+    .readiness-verdict.danger { background: var(--soft-red); border-color: #f8aaa4; }
+
+    .trial-check {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 120px;
+      color: #344054;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .trial-check input {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--blue);
+      cursor: pointer;
+    }
+
     .log {
       display: grid;
       gap: 8px;
@@ -1960,6 +2010,7 @@
         <button class="view-tab" type="button" data-view="subjectMap">ค้นตำแหน่งจากวิชา</button>
         <button class="view-tab" type="button" data-view="library">ค้นคลังทั้งหมด</button>
         <button class="view-tab" type="button" data-view="documents">คลังเอกสาร</button>
+        <button class="view-tab" type="button" data-view="trial">ลองตำแหน่งใหม่</button>
         <button class="view-tab" type="button" data-view="reports">รายงาน</button>
         <button class="view-tab" type="button" data-view="settings">ตั้งค่า / ขั้นสูง</button>
       </div>
@@ -2468,6 +2519,70 @@
       </aside>
     </main>
 
+
+    <main class="workspace hidden" id="trialView">
+      <section class="main-panel">
+        <div class="panel-head">
+          <div>
+            <div class="panel-title">ลองตำแหน่งใหม่</div>
+            <div class="subtext">กรอกรายวิชาทดลองเพื่อเช็กว่ามีคลิป/เอกสารพร้อมแค่ไหน ก่อนตัดสินใจเปิดคอร์สจริง</div>
+          </div>
+          <div class="toolbar">
+            <button id="trialCheckButton" class="primary" type="button">เช็กความพร้อม</button>
+            <button id="trialCopyButton" type="button" disabled>คัดลอกไปลงชีต</button>
+            <button id="trialExportButton" type="button" disabled>Export CSV</button>
+          </div>
+        </div>
+        <div class="trial-form">
+          <div class="field">
+            <label for="trialPositionName">ชื่อตำแหน่งทดลอง</label>
+            <input id="trialPositionName" class="control" placeholder="เช่น นักวิชาการ A">
+          </div>
+          <div class="field">
+            <label for="trialSubjectsInput">รายวิชา ทีละบรรทัด</label>
+            <textarea id="trialSubjectsInput" class="textarea-control" placeholder="1. ชื่อวิชาแรก&#10;2. ชื่อวิชาที่สอง&#10;3. ชื่อวิชาที่สาม"></textarea>
+          </div>
+        </div>
+        <div class="smart-summary" id="trialSummary" style="padding:16px 16px 0;">
+          <div class="smart-empty">กรอกชื่อตำแหน่งและรายวิชา แล้วกดเช็กความพร้อม</div>
+        </div>
+        <div class="dashboard-table-wrap">
+          <table class="dashboard-table">
+            <thead>
+              <tr>
+                <th style="width:72px;">ลำดับ</th>
+                <th>ชื่อวิชา</th>
+                <th style="width:130px;">คลิป</th>
+                <th style="width:130px;">เอกสาร</th>
+                <th>รายการที่พบ</th>
+                <th style="width:140px;">ผลตรวจ</th>
+                <th>หมายเหตุ</th>
+              </tr>
+            </thead>
+            <tbody id="trialRows">
+              <tr><td colspan="7" class="subtext">ยังไม่มีผลประเมิน</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <aside class="side-panel">
+        <div class="summary-block">
+          <div class="summary-title">ใช้ทำอะไร</div>
+          <div class="scan-summary">
+            <div><strong>ทดลองก่อนเพิ่มลงชีตจริง</strong></div>
+            <div>ระบบจะเทียบกับคลังคลิปและคลังเอกสารที่มีอยู่ แล้วสรุปว่าตำแหน่งนี้พร้อมแค่ไหน</div>
+          </div>
+        </div>
+        <div class="summary-block">
+          <div class="summary-title">การคัดลอกไปลงชีต</div>
+          <div class="scan-summary">
+            <div>ปุ่มคัดลอกจะสร้างตาราง TSV เฉพาะคอลัมน์ลำดับและชื่อวิชา</div>
+            <div>นำไปวางใน Google Sheet ได้ทันที โดยยังไม่เขียนข้อมูลกลับเอง</div>
+          </div>
+        </div>
+      </aside>
+    </main>
+
     <main class="workspace hidden" id="reportsView">
       <section class="main-panel">
         <div class="panel-head">
@@ -2589,6 +2704,7 @@
     let positionsLoadedOnce = false;
     let subjectsLoadedFromSheet = false;
     let subjectMatchProfileCache = new WeakMap();
+    let trialResults = [];
 
     let subjects = [
       {
@@ -2971,6 +3087,153 @@
       });
       downloadCsv(`sunwu-course-report-${new Date().toISOString().slice(0, 10)}.csv`, rows);
       setStatus("สถานะ: Export รายงาน CSV แล้ว");
+    }
+
+    function parseTrialSubjects(raw) {
+      return String(raw || "")
+        .split(/\r?\n/)
+        .map(line => line.replace(/^\s*(?:\d+[\).:-]?|[-*•])\s*/u, "").trim())
+        .filter(Boolean)
+        .map((title, index) => ({ no: String(index + 1), title, status: "none", score: 0, selected: false, clips: [] }));
+    }
+
+    function classifyTrialClip(item) {
+      const candidates = buildAutoClipCandidates(item);
+      const top = candidates[0];
+      if (!top) return { status: "ไม่พบคลิป", kind: "danger", top: null, candidates: [] };
+      if (top.score >= 75 && !top.hasYearMismatch) return { status: "มีคลิป", kind: "good", top, candidates };
+      if (top.score >= 35 || top.aliasHits?.length || top.matchedTerms?.length) return { status: "อาจมีคลิป", kind: "warn", top, candidates };
+      return { status: "ไม่พบคลิป", kind: "danger", top, candidates };
+    }
+
+    function classifyTrialDocument(item) {
+      const candidates = buildDocumentCandidates(item);
+      const top = candidates[0];
+      if (!top) return { status: "ไม่มีเอกสาร", kind: "danger", top: null, candidates: [] };
+      if (isHighConfidenceDocumentMatch(item, top)) return { status: "มีเอกสาร", kind: "good", top, candidates };
+      return { status: "อาจมีเอกสาร", kind: "warn", top, candidates };
+    }
+
+    function isTrialRowReady(row) {
+      return Boolean(row.reviewChecked || (row.clip.kind === "good" && row.document.kind === "good"));
+    }
+
+    function getTrialReviewNote(row) {
+      return row.reviewChecked ? "ทำเครื่องหมายว่าตรงแล้ว" : "ยังไม่ได้ทำเครื่องหมาย";
+    }
+
+    function formatTrialCandidateText(candidate) {
+      const aliasText = candidate.aliasHits?.length
+        ? ` · alias: ${candidate.aliasHits.map(hit => hit.label).join(", ")}`
+        : "";
+      const yearText = candidate.hasYearMismatch ? " · ปีอาจไม่ตรง" : "";
+      return `${candidate.name} · ${candidate.score}%${aliasText}${yearText}`;
+    }
+
+    function renderTrialCandidateList(label, candidates, emptyText, withLinks = false) {
+      const rows = (candidates || []).slice(0, 3);
+      if (!rows.length) return `<div class="subtext">${label}: ${escapeHtml(emptyText)}</div>`;
+      return `
+        <div class="doc-candidates">
+          ${rows.map((candidate, index) => {
+            const text = `${index + 1}. ${formatTrialCandidateText(candidate)}`;
+            const body = withLinks && candidate.url
+              ? `<a href="${escapeHtml(candidate.url)}" target="_blank" rel="noopener">${escapeHtml(text)}</a>`
+              : escapeHtml(text);
+            return `<div class="subtext">${label}: ${body}</div>`;
+          }).join("")}
+        </div>
+      `;
+    }
+
+    function renderTrialSummary(rows, positionName) {
+      const total = rows.length;
+      const clipReady = rows.filter(row => row.clip.kind === "good").length;
+      const docReady = rows.filter(row => row.document.kind === "good").length;
+      const checked = rows.filter(row => row.reviewChecked).length;
+      const review = rows.filter(row => !row.reviewChecked && (row.clip.kind === "warn" || row.document.kind === "warn")).length;
+      const missing = rows.filter(row => !row.reviewChecked && (row.clip.kind === "danger" || row.document.kind === "danger")).length;
+      const readySubjects = rows.filter(isTrialRowReady).length;
+      const readiness = total ? Math.round((readySubjects / total) * 100) : 0;
+      const verdictTone = readiness >= 80 && !missing ? "good" : readiness >= 55 ? "warn" : "danger";
+      const verdictText = readiness >= 80 && !missing
+        ? "พร้อมตรวจรอบสุดท้าย"
+        : readiness >= 55
+          ? "พอเปิดทดลองได้ แต่ควรเติมข้อมูลก่อนประกาศจริง"
+          : "ยังไม่ควรเปิด ควรเติมคลิป/เอกสารก่อน";
+      document.getElementById("trialSummary").innerHTML = `
+        <div class="metric"><div class="metric-value">${total}</div><div class="metric-label">วิชาที่กรอก</div></div>
+        <div class="metric"><div class="metric-value">${clipReady}</div><div class="metric-label">มีคลิป</div></div>
+        <div class="metric"><div class="metric-value">${docReady}</div><div class="metric-label">มีเอกสาร</div></div>
+        <div class="metric"><div class="metric-value">${checked}</div><div class="metric-label">ตรวจแล้ว</div></div>
+        <div class="metric"><div class="metric-value">${readiness}%</div><div class="metric-label">ความพร้อม</div></div>
+        <div class="readiness-verdict ${verdictTone}" style="grid-column:1/-1;">
+          <strong>${escapeHtml(positionName || "ตำแหน่งทดลอง")}: ${verdictText}</strong>
+          <span class="subtext">ต้องตรวจ ${review} วิชา · ยังขาดข้อมูล ${missing} วิชา</span>
+        </div>
+      `;
+    }
+
+    function renderTrialRows(rows) {
+      document.getElementById("trialRows").innerHTML = rows.map(row => {
+        const clipCandidatesHtml = renderTrialCandidateList("คลิป", row.clip.candidates, "ยังไม่พบคลิปที่เข้าเกณฑ์");
+        const docCandidatesHtml = renderTrialCandidateList("เอกสาร", row.document.candidates, "ยังไม่พบเอกสารที่เข้าเกณฑ์", true);
+        const note = [
+          getTrialReviewNote(row),
+          row.clip.kind === "danger" ? "ยังขาดคลิป" : "",
+          row.document.kind === "danger" ? "ต้องเพิ่มเอกสาร" : "",
+          row.clip.kind === "warn" || row.document.kind === "warn" ? "ควรตรวจรายการที่ระบบเสนอ" : ""
+        ].filter(Boolean).join(" · ") || "พร้อม";
+        return `
+          <tr>
+            <td>${escapeHtml(row.no)}</td>
+            <td><strong>${escapeHtml(row.title)}</strong></td>
+            <td><span class="link-status ${row.clip.kind === "good" ? "done" : row.clip.kind === "warn" ? "review" : "pending"}">${escapeHtml(row.clip.status)}</span></td>
+            <td><span class="link-status ${row.document.kind === "good" ? "done" : row.document.kind === "warn" ? "review" : "pending"}">${escapeHtml(row.document.status)}</span></td>
+            <td>${clipCandidatesHtml}${docCandidatesHtml}</td>
+            <td>
+              <label class="trial-check">
+                <input type="checkbox" data-trial-check="${escapeHtml(row.no)}" ${row.reviewChecked ? "checked" : ""}>
+                ตรง
+              </label>
+            </td>
+            <td>${escapeHtml(note)}</td>
+          </tr>
+        `;
+      }).join("") || `<tr><td colspan="7" class="subtext">ยังไม่มีผลประเมิน</td></tr>`;
+    }
+
+    async function runTrialReadiness() {
+      const positionName = document.getElementById("trialPositionName").value.trim() || "ตำแหน่งทดลอง";
+      const items = parseTrialSubjects(document.getElementById("trialSubjectsInput").value);
+      if (!items.length) {
+        openResultModal("ลองตำแหน่งใหม่", `<div class="warning">กรุณาใส่รายวิชาอย่างน้อย 1 รายการ</div>`);
+        return;
+      }
+      setStatus("สถานะ: กำลังเช็กความพร้อมตำแหน่งทดลอง");
+      if (!documentLibraryData) await ensureDocumentLibraryLoaded();
+      trialResults = items.map(item => {
+        const clip = classifyTrialClip(item);
+        const document = classifyTrialDocument(item);
+        return { ...item, positionName, clip, document };
+      });
+      renderTrialSummary(trialResults, positionName);
+      renderTrialRows(trialResults);
+      document.getElementById("trialCopyButton").disabled = false;
+      document.getElementById("trialExportButton").disabled = false;
+      setStatus(`สถานะ: เช็กตำแหน่งทดลองแล้ว ${trialResults.length} วิชา`);
+    }
+
+    function trialRowsForExport() {
+      return [["ลำดับ", "ชื่อวิชา"], ...trialResults.map(row => [row.no, row.title])];
+    }
+
+    async function copyTrialRowsToClipboard() {
+      const rows = trialRowsForExport();
+      const tsv = rows.map(row => row.join("\t")).join("\n");
+      const copied = await copyTextWithFallback(tsv);
+      setStatus(copied ? "สถานะ: คัดลอกผลตำแหน่งทดลองแล้ว" : "สถานะ: คัดลอกไม่สำเร็จ");
+      if (!copied) openResultModal("คัดลอกไปลงชีต", `<textarea class="textarea-control" onclick="this.select()" readonly>${escapeHtml(tsv)}</textarea>`);
     }
 
     function updateReportCounts() {
@@ -5271,6 +5534,7 @@
       document.getElementById("libraryView").classList.toggle("hidden", view !== "library");
       document.getElementById("dashboardView").classList.toggle("hidden", view !== "dashboard");
       document.getElementById("documentsView").classList.toggle("hidden", view !== "documents");
+      document.getElementById("trialView").classList.toggle("hidden", view !== "trial");
       document.getElementById("reportsView").classList.toggle("hidden", view !== "reports");
       document.getElementById("settingsView").classList.toggle("hidden", view !== "settings");
       document.querySelectorAll(".view-tab").forEach(button => {
@@ -6456,6 +6720,21 @@
     document.getElementById("previewButton").addEventListener("click", () => openPreview().catch(error => openResultModal("Preview การสร้างชุดคลิป", `<div class="warning">${escapeHtml(error.message)}</div>`)));
     document.getElementById("reportButton").addEventListener("click", exportCurrentReport);
     document.getElementById("exportCurrentReportButton").addEventListener("click", exportCurrentReport);
+    document.getElementById("trialCheckButton").addEventListener("click", () => runTrialReadiness().catch(error => openResultModal("ลองตำแหน่งใหม่", `<div class="warning">${escapeHtml(error.message)}</div>`)));
+    document.getElementById("trialCopyButton").addEventListener("click", copyTrialRowsToClipboard);
+    document.getElementById("trialRows").addEventListener("change", event => {
+      const checkbox = event.target.closest("[data-trial-check]");
+      if (!checkbox) return;
+      const row = trialResults.find(item => item.no === checkbox.dataset.trialCheck);
+      if (!row) return;
+      row.reviewChecked = checkbox.checked;
+      renderTrialSummary(trialResults, row.positionName || document.getElementById("trialPositionName").value.trim() || "ตำแหน่งทดลอง");
+      renderTrialRows(trialResults);
+    });
+    document.getElementById("trialExportButton").addEventListener("click", () => {
+      downloadCsv(`sunwu-trial-position-${new Date().toISOString().slice(0, 10)}.csv`, trialRowsForExport());
+      setStatus("สถานะ: Export ตำแหน่งทดลอง CSV แล้ว");
+    });
     document.getElementById("createFromSideButton").addEventListener("click", () => openPreview().catch(error => openResultModal("Preview การสร้างชุดคลิป", `<div class="warning">${escapeHtml(error.message)}</div>`)));
     document.getElementById("dryRunButton").addEventListener("click", () => runDryRun().catch(error => openResultModal("ดูบันทึกการจำลองผล", `<div class="warning">${escapeHtml(error.message)}</div>`)));
     document.getElementById("validateButton").addEventListener("click", () => runBoundaryCheck().catch(error => openResultModal("ตรวจความปลอดภัยโฟลเดอร์", `<div class="warning">${escapeHtml(error.message)}</div>`)));
