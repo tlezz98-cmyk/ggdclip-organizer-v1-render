@@ -3356,6 +3356,7 @@
       { keys: ["ข้อมูลข่าวสารของราชการ"], terms: ["ข้อมูลข่าวสาร", "ข้อมูลข่าวสารของราชการ", "2540"] },
       { keys: ["ทรัพยากรบุคคล", "hrm", "hrd"], terms: ["hrm", "hrd", "ทรัพยากรบุคคล", "บริหารทรัพยากรบุคคล", "พัฒนาทรัพยากรบุคคล", "นักทรัพย์"] },
       { keys: ["วิธีปฏิบัติราชการทางปกครอง"], terms: ["วิธีปฏิบัติราชการทางปกครอง", "ปฏิบัติราชการทางปกครอง", "ราชการทางปกครอง", "2539"] },
+      { keys: ["การปฏิบัติราชการทางอิเล็กทรอนิกส์", "ปฏิบัติราชการทางอิเล็กทรอนิกส์", "ราชการทางอิเล็กทรอนิกส์", "วิธีปฏิบัติราชการอิเล็กทรอนิกส์"], terms: ["วิธีปฏิบัติราชการอิเล็กทรอนิกส์", "ปฏิบัติราชการอิเล็กทรอนิกส์", "ราชการอิเล็กทรอนิกส์", "อิเล็กทรอนิกส์", "2565"], aliasLabel: "ปฏิบัติราชการทางอิเล็กทรอนิกส์ → วิธีปฏิบัติราชการอิเล็กทรอนิกส์" },
       { keys: ["ความรับผิดทางละเมิด"], terms: ["ความรับผิดทางละเมิด", "ละเมิด", "เจ้าหน้าที่", "2539"] },
       { keys: ["สารบรรณ", "งานสารบรรณ", "ระเบียบสารบรรณ"], terms: ["สารบรรณ", "งานสารบรรณ", "2526"] },
       { keys: ["ความลับ", "รักษาความลับ", "ระเบียบความลับ"], terms: ["ความลับ", "ราชการลับ", "รักษาความลับ", "2544"] },
@@ -3513,8 +3514,11 @@
       score += Math.min(18, specificHits * 6);
       score += yearHits.length ? 18 : 0;
       if (hasYearMismatch) score -= 28;
+      const searchMatched = documentRowMatchesSearch(doc, item.title || "");
+      const searchScore = documentSearchScore(doc, item.title || "");
+      if (searchMatched && searchScore > 0) score = Math.max(score, Math.min(96, 48 + searchScore));
       score = Math.max(0, Math.min(100, score));
-      return { score, matchedTerms, aliasHits, years: documentYears, hasYearMismatch };
+      return { score, matchedTerms, aliasHits, years: documentYears, hasYearMismatch, searchMatched };
     }
 
     function buildDocumentCandidates(item) {
@@ -3522,7 +3526,7 @@
       if (!rows.length) return [];
       return rows
         .map(doc => ({ ...doc, ...scoreDocumentForSubject(item, doc) }))
-        .filter(doc => doc.score >= 45 && doc.matchedTerms.length)
+        .filter(doc => doc.score >= 45 && (doc.matchedTerms.length || doc.searchMatched))
         .sort((a, b) => b.score - a.score || String(a.name || "").localeCompare(String(b.name || ""), "th"))
         .slice(0, 3);
     }
@@ -4256,16 +4260,178 @@
       ].join("");
     }
 
+    function normalizeDocumentSearchText(value) {
+      return String(value || "")
+        .normalize("NFKC")
+        .replace(/[๐-๙]/g, digit => "0123456789"["๐๑๒๓๔๕๖๗๘๙".indexOf(digit)] || digit)
+        .toLowerCase()
+        .replace(/[\u200B-\u200D\uFEFF]/g, "")
+        .replace(/[(){}\[\]_.\-–—/\\+,:;'"“”‘’]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+
+    function compactDocumentSearchText(value) {
+      return normalizeDocumentSearchText(value).replace(/\s+/g, "");
+    }
+
+    const documentSearchWeakTerms = new Set(["พ", "ศ", "พศ", "พระราชบัญญัติ", "พ.ร.บ", "พ.ร.บ.", "ระเบียบ", "ประกาศ", "กฎหมาย", "การ", "ทาง", "วิธี", "และ", "ที่", "แก้ไข", "เพิ่มเติม", "ว่าด้วย"]);
+    const documentSearchConceptTerms = [
+      "งานสารบรรณ",
+      "สารบรรณ",
+      "หนังสือราชการ",
+      "ความลับ",
+      "ข้อมูลข่าวสาร",
+      "พัสดุ",
+      "จัดซื้อจัดจ้าง",
+      "การเงิน",
+      "บัญชี",
+      "งบประมาณ",
+      "ทรัพยากรบุคคล",
+      "วินัย",
+      "ละเมิด",
+      "เลือกตั้ง",
+      "อิเล็กทรอนิกส์",
+      "ราชการอิเล็กทรอนิกส์",
+      "ปฏิบัติราชการอิเล็กทรอนิกส์",
+      "วิธีปฏิบัติราชการอิเล็กทรอนิกส์"
+    ];
+    const documentSearchAliasRules = [
+      {
+        keys: ["การปฏิบัติราชการทางอิเล็กทรอนิกส์", "ปฏิบัติราชการทางอิเล็กทรอนิกส์", "ราชการทางอิเล็กทรอนิกส์"],
+        terms: ["วิธีปฏิบัติราชการอิเล็กทรอนิกส์", "ปฏิบัติราชการอิเล็กทรอนิกส์", "ราชการอิเล็กทรอนิกส์", "อิเล็กทรอนิกส์"]
+      }
+    ];
+
+    function buildDocumentSearchTerms(query) {
+      const normalizedQuery = normalizeDocumentSearchText(query);
+      const compactQuery = compactDocumentSearchText(query);
+      const terms = new Set();
+      normalizedQuery.split(/\s+/).forEach(term => {
+        if (term.length >= 2) terms.add(term);
+      });
+      documentSearchConceptTerms.forEach(concept => {
+        const normalizedConcept = normalizeDocumentSearchText(concept);
+        const compactConcept = compactDocumentSearchText(concept);
+        if (
+          normalizedQuery.includes(normalizedConcept) ||
+          compactQuery.includes(compactConcept)
+        ) {
+          terms.add(normalizedConcept);
+          if (compactConcept.length >= 4) terms.add(compactConcept);
+        }
+      });
+      documentSearchAliasRules.forEach(rule => {
+        const applies = rule.keys.some(key => {
+          const normalizedKey = normalizeDocumentSearchText(key);
+          const compactKey = compactDocumentSearchText(key);
+          return normalizedQuery.includes(normalizedKey) || compactQuery.includes(compactKey);
+        });
+        if (!applies) return;
+        rule.terms.forEach(term => {
+          const normalizedTerm = normalizeDocumentSearchText(term);
+          const compactTerm = compactDocumentSearchText(term);
+          terms.add(normalizedTerm);
+          if (compactTerm.length >= 4) terms.add(compactTerm);
+        });
+      });
+      return [...terms];
+    }
+
+    function documentTermMatches(normalizedHaystack, compactHaystack, term) {
+      const normalizedTerm = normalizeDocumentSearchText(term);
+      if (!normalizedTerm) return false;
+      if (normalizedHaystack.includes(normalizedTerm)) return true;
+      const compactTerm = compactDocumentSearchText(term);
+      return compactTerm.length >= 4 && compactHaystack.includes(compactTerm);
+    }
+
+    function isWeakDocumentSearchTerm(term) {
+      const normalizedTerm = normalizeDocumentSearchText(term);
+      return documentSearchWeakTerms.has(normalizedTerm) || /แก้ไข|เพิ่มเติม/.test(normalizedTerm);
+    }
+
+    function documentRowMatchesSearch(row, query) {
+      const normalizedQuery = normalizeDocumentSearchText(query);
+      if (!normalizedQuery) return true;
+
+      const haystack = [
+        row.name,
+        row.category,
+        row.folder,
+        row.extension,
+        row.status,
+        row.modifiedAt,
+        ...(row.cells || []),
+        ...Object.values(row.values || {})
+      ].join(" ");
+      const normalizedHaystack = normalizeDocumentSearchText(haystack);
+      if (normalizedHaystack.includes(normalizedQuery)) return true;
+
+      const compactQuery = compactDocumentSearchText(query);
+      const compactHaystack = compactDocumentSearchText(haystack);
+      if (compactQuery.length >= 4 && compactHaystack.includes(compactQuery)) return true;
+
+      const terms = buildDocumentSearchTerms(query);
+      const strongTerms = terms.filter(term => {
+        const normalizedTerm = normalizeDocumentSearchText(term);
+        return !/^(25|26)\d{2}$/.test(normalizedTerm) && !isWeakDocumentSearchTerm(normalizedTerm);
+      });
+      if (strongTerms.some(term => documentTermMatches(normalizedHaystack, compactHaystack, term))) return true;
+
+      return !strongTerms.length && terms.some(term => documentTermMatches(normalizedHaystack, compactHaystack, term));
+    }
+
+    function documentSearchScore(row, query) {
+      const normalizedQuery = normalizeDocumentSearchText(query);
+      if (!normalizedQuery) return 0;
+
+      const nameText = normalizeDocumentSearchText(row.name);
+      const compactName = compactDocumentSearchText(row.name);
+      const haystack = [
+        row.name,
+        row.category,
+        row.folder,
+        row.extension,
+        row.status,
+        row.modifiedAt,
+        ...(row.cells || []),
+        ...Object.values(row.values || {})
+      ].join(" ");
+      const normalizedHaystack = normalizeDocumentSearchText(haystack);
+      const compactHaystack = compactDocumentSearchText(haystack);
+      let score = 0;
+
+      if (normalizedHaystack.includes(normalizedQuery)) score += 200;
+      const compactQuery = compactDocumentSearchText(query);
+      if (compactQuery.length >= 4 && compactHaystack.includes(compactQuery)) score += 180;
+
+      for (const term of buildDocumentSearchTerms(query)) {
+        const normalizedTerm = normalizeDocumentSearchText(term);
+        if (!normalizedTerm || isWeakDocumentSearchTerm(normalizedTerm)) continue;
+        const compactTerm = compactDocumentSearchText(term);
+        if (nameText.includes(normalizedTerm) || (compactTerm.length >= 4 && compactName.includes(compactTerm))) {
+          score += 40;
+        } else if (documentTermMatches(normalizedHaystack, compactHaystack, term)) {
+          score += 8;
+        }
+      }
+
+      return score;
+    }
+
     function renderDocumentLibraryRows() {
       const data = documentLibraryData;
       const rows = data?.rows || [];
-      const query = document.getElementById("docSearchInput").value.trim().toLowerCase();
+      const query = document.getElementById("docSearchInput").value.trim();
       const filtered = rows.filter(row => {
-        const haystack = `${row.name} ${row.category} ${row.folder} ${row.extension} ${row.status} ${row.modifiedAt}`.toLowerCase();
         const categoryOk = documentCategoryFilter === "__ALL__" || row.category === documentCategoryFilter;
-        return categoryOk && (!query || haystack.includes(query));
+        return categoryOk && documentRowMatchesSearch(row, query);
       });
       const sortedRows = sortDocumentRows(filtered);
+      if (query) {
+        sortedRows.sort((a, b) => documentSearchScore(b, query) - documentSearchScore(a, query));
+      }
 
       document.getElementById("docLibraryHead").innerHTML = `
         <tr>
