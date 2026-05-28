@@ -1160,13 +1160,21 @@
 
     .result-item {
       display: grid;
-      grid-template-columns: 1fr auto auto;
+      grid-template-columns: 1fr auto;
       gap: 8px;
       align-items: center;
       border: 1px solid var(--line);
       border-radius: 8px;
       padding: 10px;
       background: #fbfcfe;
+    }
+
+    .manual-result-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+      gap: 8px;
     }
 
     .smart-summary {
@@ -1842,6 +1850,10 @@
 
       body.online-mode .setup {
         grid-template-columns: max-content auto minmax(220px, 1fr) auto;
+      }
+
+      body.online-mode .setup > .field:first-child {
+        grid-column: auto;
       }
 
       .side-panel {
@@ -3513,7 +3525,7 @@
           <div class="clip-actions ${appConfig.onlineMode ? "online-hide" : ""}">
             <button class="icon" type="button" title="เปิดต้นทาง" data-action="reveal-source" data-row="${item.no}" data-clip="${index}" onclick="revealSourceFromButton(event, this)">↗</button>
             <button class="icon" type="button" title="คัดลอก path" data-action="copy-source-path" data-row="${item.no}" data-clip="${index}" onclick="copySourcePathFromButton(event, this)">⧉</button>
-            <button class="icon" type="button" title="ลืม/ถอด match นี้" data-action="forget-match" data-row="${item.no}" data-clip="${index}">×</button>
+            <button class="icon" type="button" title="ถอดออกจากรายการรอบนี้" data-action="forget-match" data-row="${item.no}" data-clip="${index}">×</button>
           </div>
         </div>
       `).join("");
@@ -3620,6 +3632,7 @@
       { keys: ["ทรัพยากรบุคคล", "hrm", "hrd"], terms: ["hrm", "hrd", "ทรัพยากรบุคคล", "บริหารทรัพยากรบุคคล", "พัฒนาทรัพยากรบุคคล", "นักทรัพย์"] },
       { keys: ["วิธีปฏิบัติราชการทางปกครอง"], terms: ["วิธีปฏิบัติราชการทางปกครอง", "ปฏิบัติราชการทางปกครอง", "ราชการทางปกครอง", "2539"] },
       { keys: ["การปฏิบัติราชการทางอิเล็กทรอนิกส์", "ปฏิบัติราชการทางอิเล็กทรอนิกส์", "ราชการทางอิเล็กทรอนิกส์", "วิธีปฏิบัติราชการอิเล็กทรอนิกส์"], terms: ["วิธีปฏิบัติราชการอิเล็กทรอนิกส์", "ปฏิบัติราชการอิเล็กทรอนิกส์", "ราชการอิเล็กทรอนิกส์", "อิเล็กทรอนิกส์", "2565"], aliasLabel: "ปฏิบัติราชการทางอิเล็กทรอนิกส์ → วิธีปฏิบัติราชการอิเล็กทรอนิกส์" },
+      { keys: ["กระทำความผิดเกี่ยวกับคอมพิวเตอร์", "ความผิดเกี่ยวกับคอมพิวเตอร์", "คอมพิวเตอร์"], terms: ["กระทำความผิดเกี่ยวกับคอมพิวเตอร์", "ความผิดเกี่ยวกับคอมพิวเตอร์", "คอมพิวเตอร์", "พรบ คอม", "พ ร บ คอม", "คอม", "2550"], aliasLabel: "พ.ร.บ.คอมพิวเตอร์/ความผิดเกี่ยวกับคอมพิวเตอร์" },
       { keys: ["ความรับผิดทางละเมิด"], terms: ["ความรับผิดทางละเมิด", "ละเมิด", "เจ้าหน้าที่", "2539"] },
       { keys: ["สารบรรณ", "งานสารบรรณ", "ระเบียบสารบรรณ"], terms: ["สารบรรณ", "งานสารบรรณ", "2526"] },
       { keys: ["ความลับ", "รักษาความลับ", "ระเบียบความลับ"], terms: ["ความลับ", "ราชการลับ", "รักษาความลับ", "2544"] },
@@ -3673,6 +3686,8 @@
     function addDerivedSubjectTerms(term, terms) {
       const derived = String(term || "")
         .replace(/^(พระราชบัญญัติ|พระราชกฤษฎีกา|ระเบียบ|ประกาศ|ความรู้เกี่ยวกับ|กฎหมายว่าด้วยการ|กฎหมายว่าด้วย|กฎหมาย)/, "")
+        .replace(/^ว่าด้วยการ/, "")
+        .replace(/^ว่าด้วย/, "")
         .trim();
       if (derived && derived !== term && derived.length >= 3 && !subjectMatchStopwords.has(derived)) {
         terms.add(derived);
@@ -3693,7 +3708,12 @@
 
       for (const rule of subjectAliasRules) {
         if (rule.keys.some(key => normalized.includes(normalizeMatchText(key)))) {
-          rule.terms.forEach(term => terms.add(normalizeMatchText(term)));
+          rule.terms.forEach(term => {
+            const normalizedTerm = normalizeMatchText(term);
+            if (normalizedTerm) terms.add(normalizedTerm);
+            const compactTerm = normalizeCompactMatchKey(term);
+            if (compactTerm && compactTerm.length >= 3) terms.add(compactTerm);
+          });
         }
       }
 
@@ -3739,8 +3759,9 @@
       const profile = getSubjectMatchProfile(item);
       const title = profile.normalizedTitle;
       const clipText = normalizeMatchText(`${file.name || ""} ${file.relativePath || ""}`);
+      const clipCompact = normalizeCompactMatchKey(`${file.name || ""} ${file.relativePath || ""}`);
       const terms = profile.terms;
-      const matchedTerms = terms.filter(term => term && clipText.includes(term));
+      const matchedTerms = terms.filter(term => term && (clipText.includes(term) || clipCompact.includes(normalizeCompactMatchKey(term))));
       const aliasHits = getSubjectAliasHits(item, clipText);
       const subjectYears = profile.years;
       const fileYears = extractMatchYears(`${file.name || ""} ${file.relativePath || ""}`);
@@ -3756,6 +3777,8 @@
       if (!specificHits && yearHits.length) score = 0;
       if (broadOnly) score -= 18;
       if (clipText.includes(title) || title.includes(clipText.replace(/\s*mp4$/u, ""))) score += 20;
+      if (profile.compactTitle && clipCompact.includes(profile.compactTitle)) score += 28;
+      if (profile.compactTitle && clipCompact && profile.compactTitle.includes(clipCompact.replace(/mp4$/u, ""))) score += 14;
       score = Math.max(0, Math.min(100, score));
 
       return { score, matchedTerms, aliasHits, years: fileYears, hasYearMismatch };
@@ -4526,9 +4549,11 @@
     function normalizeDocumentSearchText(value) {
       return String(value || "")
         .normalize("NFKC")
+        .replace(/\u0E4D\u0E32/g, "ำ")
         .replace(/[๐-๙]/g, digit => "0123456789"["๐๑๒๓๔๕๖๗๘๙".indexOf(digit)] || digit)
         .toLowerCase()
         .replace(/[\u200B-\u200D\uFEFF]/g, "")
+        .replace(/ฯ/g, "")
         .replace(/[(){}\[\]_.\-–—/\\+,:;'"“”‘’]/g, " ")
         .replace(/\s+/g, " ")
         .trim();
@@ -4548,6 +4573,12 @@
       "พัสดุ",
       "จัดซื้อจัดจ้าง",
       "การเงิน",
+      "เบิกเงิน",
+      "เบิกจากคลัง",
+      "รับเงิน",
+      "จ่ายเงิน",
+      "เก็บรักษาเงิน",
+      "นำส่งเงิน",
       "บัญชี",
       "งบประมาณ",
       "ทรัพยากรบุคคล",
@@ -4563,6 +4594,10 @@
       {
         keys: ["การปฏิบัติราชการทางอิเล็กทรอนิกส์", "ปฏิบัติราชการทางอิเล็กทรอนิกส์", "ราชการทางอิเล็กทรอนิกส์"],
         terms: ["วิธีปฏิบัติราชการอิเล็กทรอนิกส์", "ปฏิบัติราชการอิเล็กทรอนิกส์", "ราชการอิเล็กทรอนิกส์", "อิเล็กทรอนิกส์"]
+      },
+      {
+        keys: ["เบิกเงิน", "เบิกเงินฯ", "การเบิกเงิน", "การเบิกเงินฯ", "ระเบียบกระทรวงการคลังว่าด้วยการเบิกเงิน", "ระเบียบกระทรวงการคลังว่าด้วยการเบิกเงินฯ"],
+        terms: ["เบิกจากคลัง", "การรับเงิน", "รับเงิน", "การจ่ายเงิน", "จ่ายเงิน", "เก็บรักษาเงิน", "นำส่งเงิน", "การนำส่งเงิน", "เบิกเงิน", "กระทรวงการคลัง", "2562"]
       }
     ];
 
@@ -5330,6 +5365,106 @@
       `;
     }
 
+    function subjectMapPositionKey(position) {
+      return `${String(position.position || "").trim()}|${String(position.group || "").trim()}`;
+    }
+
+    function groupSubjectMapByPosition(cards) {
+      const grouped = new Map();
+      for (const item of (cards || [])) {
+        for (const position of (item.positions || [])) {
+          if (!position?.position) continue;
+          const key = subjectMapPositionKey(position);
+          const existing = grouped.get(key) || {
+            ...position,
+            order: "",
+            orders: new Set(),
+            subjects: [],
+            bestScore: 0,
+            matchedTerms: new Set()
+          };
+          if (position.order) existing.orders.add(position.order);
+          existing.bestScore = Math.max(existing.bestScore, Number(item.score || 0));
+          (item.matchedTerms || []).forEach(term => existing.matchedTerms.add(term));
+          existing.subjects.push({
+            title: item.title,
+            order: position.order || "",
+            score: item.score,
+            matchedTerms: item.matchedTerms || [],
+            linkedCount: item.linkedCount || 0,
+            totalPositions: item.totalPositions || 0,
+            nearby: item.nearby || false
+          });
+          grouped.set(key, existing);
+        }
+      }
+
+      return [...grouped.values()]
+        .map(position => ({
+          ...position,
+          orders: [...position.orders],
+          matchedTerms: [...position.matchedTerms],
+          subjects: position.subjects.sort((a, b) => String(a.order || "").localeCompare(String(b.order || ""), "th", { numeric: true }) || Number(b.score || 0) - Number(a.score || 0) || a.title.localeCompare(b.title, "th"))
+        }))
+        .sort((a, b) => Number(b.bestScore || 0) - Number(a.bestScore || 0) || b.subjects.length - a.subjects.length || a.position.localeCompare(b.position, "th"));
+    }
+
+    function renderSubjectMapCandidateSubject(subject) {
+      const percent = subject.totalPositions ? Math.round((subject.linkedCount / subject.totalPositions) * 100) : 0;
+      return `
+        <div class="subject-map-position">
+          <div>
+            <div class="smart-clip-name">${subject.order ? `<span class="badge">${escapeHtml(subject.order)}</span> ` : ""}${escapeHtml(subject.title)}</div>
+            <div class="smart-badges">
+              <span class="badge ${subject.nearby ? "warn" : "good"}">คะแนน ${escapeHtml(subject.score)}%</span>
+              <span class="badge ${subject.linkedCount < subject.totalPositions ? "warn" : "good"}">ภาพรวม ${escapeHtml(subject.linkedCount)}/${escapeHtml(subject.totalPositions)} (${percent}%)</span>
+              ${subject.nearby ? `<span class="badge warn">วิชาใกล้เคียง</span>` : ""}
+            </div>
+            <div class="clip-meta">เจอคำ: ${escapeHtml((subject.matchedTerms || []).join(", ") || "-")}</div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderSubjectMapPositionCard(position, index, query, nearby = false) {
+      const key = `${nearby ? "nearby-position" : "position"}-${index}`;
+      const collapsed = collapsedSubjectMapCards.has(key);
+      const linked = isSubjectMapLinked(position);
+      const link = position.facebookUrl
+        ? `<a class="button-link" href="${escapeHtml(position.facebookUrl)}" target="_blank" rel="noopener">เปิดกลุ่ม</a>`
+        : `<span class="subtext">ไม่มี URL กลุ่ม</span>`;
+      return `
+        <div class="subject-map-card">
+          <div class="subject-map-head">
+            <div>
+              <div class="subject-map-title">${escapeHtml(position.position)}</div>
+              <div class="smart-badges">
+                <span class="badge ${nearby ? "warn" : "good"}">คะแนนสูงสุด ${escapeHtml(position.bestScore)}%</span>
+                <span class="badge">พบ ${escapeHtml(position.subjects.length)} วิชาที่อาจใช่</span>
+                <span class="badge ${linked ? "good" : "warn"}">${escapeHtml(subjectMapStatusLabel(position))}</span>
+                ${nearby ? `<span class="badge warn">กลุ่มใกล้เคียง</span>` : ""}
+              </div>
+              <div class="smart-position">${escapeHtml(position.group || "-")}${position.orders?.length ? ` · ลำดับ ${escapeHtml(position.orders.join(", "))}` : ""} · เจอคำ: ${escapeHtml((position.matchedTerms || []).join(", ") || "-")}</div>
+            </div>
+            <div class="subject-map-actions">
+              <button type="button" data-action="load-global-position" data-position="${escapeHtml(position.position)}" data-query="${escapeHtml(query)}">จัดตำแหน่ง</button>
+              ${link}
+              <button type="button" data-action="subject-map-toggle" data-key="${escapeHtml(key)}">${collapsed ? "ดูรายละเอียด" : "พับรายละเอียด"}</button>
+            </div>
+          </div>
+          <div class="subject-map-body ${collapsed ? "collapsed" : ""}" data-subject-map-body="${escapeHtml(key)}">
+            <div class="position-bucket">
+              <div class="bucket-head ${linked ? "good" : "warn"}">
+                <span>วิชาที่อาจใช่ตามคำค้น</span>
+                <span>${escapeHtml(position.subjects.length)}</span>
+              </div>
+              ${position.subjects.length ? position.subjects.map(renderSubjectMapCandidateSubject).join("") : `<div class="smart-empty">ยังไม่พบวิชาที่อาจใช่ในตำแหน่งนี้</div>`}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
     function renderSubjectMapBucket(title, positions, tone, query, emptyText) {
       return `
         <div class="position-bucket">
@@ -5386,16 +5521,17 @@
     }
 
     function renderSubjectMapResults(result, query) {
-      const mainCards = (result.results || []).map((item, index) => renderSubjectMapCard(item, index, query)).join("");
-      const nearbyCards = (result.nearby || []).map((item, index) => renderSubjectMapCard(item, index, query, true)).join("");
-      const totalPositions = (result.results || []).reduce((sum, item) => sum + Number(item.totalPositions || 0), 0);
-      const pendingTotal = (result.results || []).reduce((sum, item) => sum + Number(item.pendingCount || 0), 0);
+      const mainPositions = groupSubjectMapByPosition(result.results || []);
+      const nearbyPositions = groupSubjectMapByPosition((result.nearby || []).map(item => ({ ...item, nearby: true })));
+      const mainCards = mainPositions.map((position, index) => renderSubjectMapPositionCard(position, index, query)).join("");
+      const nearbyCards = nearbyPositions.map((position, index) => renderSubjectMapPositionCard(position, index, query, true)).join("");
+      const pendingTotal = mainPositions.filter(position => !isSubjectMapLinked(position)).length;
 
       document.getElementById("subjectMapResults").innerHTML = `
         ${result.warning ? `<div class="warning">${escapeHtml(result.warning)}</div>` : ""}
         <div class="smart-summary">
           <div class="metric"><div class="metric-value">${escapeHtml(result.count || 0)}</div><div class="metric-label">วิชาที่มั่นใจ</div></div>
-          <div class="metric"><div class="metric-value">${escapeHtml(totalPositions)}</div><div class="metric-label">ตำแหน่งที่เกี่ยวข้อง</div></div>
+          <div class="metric"><div class="metric-value">${escapeHtml(mainPositions.length)}</div><div class="metric-label">ตำแหน่งที่เกี่ยวข้อง</div></div>
           <div class="metric"><div class="metric-value">${escapeHtml(pendingTotal)}</div><div class="metric-label">ยังไม่ได้ลงลิงก์</div></div>
           <div class="metric"><div class="metric-value">${escapeHtml(query)}</div><div class="metric-label">คำค้น</div></div>
         </div>
@@ -5406,8 +5542,8 @@
             <button type="button" data-action="subject-map-collapse-all">พับทั้งหมด</button>
           </div>
         </div>
-        ${mainCards || `<div class="smart-empty">ไม่พบวิชาที่มั่นใจจากคำค้นนี้</div>`}
-        ${nearbyCards ? `<div class="safety-note">วิชาใกล้เคียง แยกไว้เพื่อให้ตรวจเองก่อนนับเป็นงานหลัก</div>${nearbyCards}` : ""}
+        ${mainCards || `<div class="smart-empty">ไม่พบตำแหน่งที่มั่นใจจากคำค้นนี้</div>`}
+        ${nearbyCards ? `<div class="safety-note">กลุ่ม/วิชาใกล้เคียง แยกไว้เพื่อให้ตรวจเองก่อนนับเป็นงานหลัก</div>${nearbyCards}` : ""}
       `;
     }
 
@@ -5519,10 +5655,12 @@
       setStatus("สถานะ: กำลังค้นตำแหน่งจากวิชา");
       document.getElementById("subjectMapResults").innerHTML = `<div class="subtext">กำลังค้น...</div>`;
       const result = await fetchSubjectMapData(sheetUrl, query);
+      const mainPositionKeys = groupSubjectMapByPosition(result.results || []).map((_, index) => `position-${index}`);
+      const nearbyPositionKeys = groupSubjectMapByPosition(result.nearby || []).map((_, index) => `nearby-position-${index}`);
 
       collapsedSubjectMapCards = new Set([
-        ...(result.results || []).map((_, index) => `main-${index}`),
-        ...(result.nearby || []).map((_, index) => `nearby-${index}`)
+        ...mainPositionKeys,
+        ...nearbyPositionKeys
       ]);
       renderSubjectMapResults(result, query);
       setStatus(`สถานะ: ค้นตำแหน่งจากวิชาพบ ${result.count || 0} วิชาหลัก`);
@@ -5985,22 +6123,27 @@
       const clip = item.clips[clipIndex];
       if (!clip) return;
 
-      if (String(clip.label || "").includes("ค้นเอง")) {
-        item.clips.splice(clipIndex, 1);
-      } else {
-        clip.checked = false;
-        clip.label = `${clip.label || "ตัวเลือก"} · ลืมแล้ว`;
-      }
+      const removedWasChecked = Boolean(clip.checked);
+      item.clips.splice(clipIndex, 1);
 
       item.selected = item.clips.some(candidate => candidate.checked && candidate.path);
       if (["memory", "strong", "likely"].includes(item.status)) {
         item.status = item.selected ? "action" : "maybe";
       }
-      item.reason = "ผู้ใช้ลืม/ถอด match นี้เพื่อกันการจำผิด";
-      item.warning = "รายการนี้จะไม่ถูกสร้างจนกว่าจะเลือกคลิปใหม่อีกครั้ง";
+      if (!item.clips.length) {
+        item.status = "none";
+        item.score = 0;
+        item.reason = "ผู้ใช้ถอดคลิปที่เจอออกจากรายการรอบนี้";
+        item.warning = "รายการนี้จะไม่ถูกสร้างจนกว่าจะค้นหรือเลือกคลิปใหม่";
+      } else {
+        item.reason = "ผู้ใช้ถอดคลิปบางรายการออกจากรอบนี้";
+        item.warning = removedWasChecked
+          ? "คลิปที่เลือกไว้ถูกถอดออกแล้ว กรุณาเลือกคลิปอื่นหากต้องการสร้าง"
+          : "ถอดตัวเลือกที่ไม่ต้องการออกแล้ว ไม่มีผลกับรอบอื่น";
+      }
       renderRows();
       updateSummary();
-      setStatus("สถานะ: ถอด match แล้ว ยังไม่ลบไฟล์ใด ๆ");
+      setStatus("สถานะ: ถอดคลิปออกจากรายการรอบนี้แล้ว ไม่ลบไฟล์ต้นทางและไม่กระทบรอบอื่น");
     }
 
     async function runDryRun() {
@@ -6203,11 +6346,21 @@
               ${renderSearchBadges(file)}
               <div class="subtext">คะแนนค้นเอง ${file.score}% · เจอคำ: ${escapeHtml(file.matchedTerms.join(", "))}</div>
             </div>
-            <button type="button" data-pick-main="${index}">ตัวเลือกหลัก</button>
-            <button type="button" data-pick-related="${index}">อาจเกี่ยว</button>
+            <div class="manual-result-actions">
+              <button class="icon" type="button" title="เปิดต้นทาง" data-manual-reveal="${index}">↗</button>
+              <button class="icon" type="button" title="คัดลอก path" data-manual-copy="${index}">⧉</button>
+              <button type="button" data-pick-main="${index}">ตัวเลือกหลัก</button>
+              <button type="button" data-pick-related="${index}">อาจเกี่ยว</button>
+            </div>
           </div>
         `).join("");
 
+        resultBox.querySelectorAll("[data-manual-reveal]").forEach(button => {
+          button.addEventListener("click", () => revealManualSearchFile(result.results[Number(button.dataset.manualReveal)]));
+        });
+        resultBox.querySelectorAll("[data-manual-copy]").forEach(button => {
+          button.addEventListener("click", () => copyManualSearchPath(result.results[Number(button.dataset.manualCopy)]));
+        });
         resultBox.querySelectorAll("[data-pick-main]").forEach(button => {
           button.addEventListener("click", () => addManualClip(rowNo, result.results[Number(button.dataset.pickMain)], "ตัวเลือกหลัก", true));
         });
@@ -6217,6 +6370,46 @@
       } catch (error) {
         resultBox.innerHTML = `<div class="warning">${escapeHtml(error.message)}</div>`;
       }
+    }
+
+    async function revealManualSearchFile(file) {
+      if (!file?.path) {
+        setStatus("สถานะ: รายการนี้ยังไม่มีตำแหน่งไฟล์ต้นทาง");
+        return;
+      }
+      setStatus("สถานะ: กำลังเปิด Explorer ไปที่ไฟล์ต้นทาง");
+      try {
+        const response = await fetch(`/api/reveal?path=${encodeURIComponent(file.path)}&t=${Date.now()}`);
+        const result = await response.json();
+        if (!response.ok || !result.ok) throw new Error(result.error || "เปิดต้นทางไม่สำเร็จ");
+        setStatus("สถานะ: เปิด Explorer ไปที่ไฟล์ต้นทางแล้ว");
+      } catch (error) {
+        try {
+          const response = await fetch(`/api/open-folder?path=${encodeURIComponent(file.path)}&t=${Date.now()}`);
+          const result = await response.json();
+          if (!response.ok || !result.ok) throw new Error(result.error || error.message);
+          setStatus("สถานะ: เปิดโฟลเดอร์ต้นทางแทนแล้ว");
+        } catch (fallbackError) {
+          setStatus(`สถานะ: ${fallbackError.message || error.message}`);
+        }
+      }
+    }
+
+    async function copyManualSearchPath(file) {
+      if (!file?.path) {
+        setStatus("สถานะ: รายการนี้ยังไม่มีตำแหน่งไฟล์ต้นทาง");
+        return;
+      }
+      const copied = await copyTextWithFallback(file.path);
+      if (copied) {
+        setStatus("สถานะ: คัดลอก path ต้นทางแล้ว");
+        return;
+      }
+      openResultModal("Path ต้นทาง", `
+        <div class="subtext">คัดลอกอัตโนมัติไม่ได้ ให้เลือก path ด้านล่างแล้วกด Ctrl+C</div>
+        <div class="preview-line"><strong>คลิป</strong><span>${escapeHtml(file.name)}</span></div>
+        <textarea class="control" rows="3" readonly>${escapeHtml(file.path)}</textarea>
+      `);
     }
 
     function addManualClip(rowNo, file, label, checked) {
