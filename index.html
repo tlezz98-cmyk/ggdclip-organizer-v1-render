@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="th">
 <head>
   <meta charset="utf-8">
@@ -5389,6 +5389,8 @@
           existing.subjects.push({
             title: item.title,
             order: position.order || "",
+            sheetStatus: position.sheetStatus || "",
+            clipStatus: position.clipStatus || "",
             score: item.score,
             matchedTerms: item.matchedTerms || [],
             linkedCount: item.linkedCount || 0,
@@ -5410,15 +5412,16 @@
     }
 
     function renderSubjectMapCandidateSubject(subject) {
-      const percent = subject.totalPositions ? Math.round((subject.linkedCount / subject.totalPositions) * 100) : 0;
+      const linked = isSubjectMapLinked(subject);
+      const status = subjectMapStatusLabel(subject);
       return `
         <div class="subject-map-position">
           <div>
             <div class="smart-clip-name">${subject.order ? `<span class="badge">${escapeHtml(subject.order)}</span> ` : ""}${escapeHtml(subject.title)}</div>
             <div class="smart-badges">
               <span class="badge ${subject.nearby ? "warn" : "good"}">คะแนน ${escapeHtml(subject.score)}%</span>
-              <span class="badge ${subject.linkedCount < subject.totalPositions ? "warn" : "good"}">ภาพรวม ${escapeHtml(subject.linkedCount)}/${escapeHtml(subject.totalPositions)} (${percent}%)</span>
               ${subject.nearby ? `<span class="badge warn">วิชาใกล้เคียง</span>` : ""}
+              <span class="badge ${linked ? "good" : "warn"}">${escapeHtml(status)}</span>
             </div>
             <div class="clip-meta">เจอคำ: ${escapeHtml((subject.matchedTerms || []).join(", ") || "-")}</div>
           </div>
