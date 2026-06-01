@@ -381,6 +381,16 @@ async function getServiceAccountConfig() {
   };
 }
 
+async function getAppsScriptStatusWriterConfig() {
+  const config = await readAppConfig();
+  const writer = config.appsScriptStatusWriter || {};
+  return {
+    configured: Boolean(process.env.APPS_SCRIPT_STATUS_URL || writer.url),
+    url: process.env.APPS_SCRIPT_STATUS_URL || writer.url || "",
+    secret: process.env.APPS_SCRIPT_STATUS_SECRET || writer.secret || ""
+  };
+}
+
 function publicAuthConfig(config) {
   return {
     configured: config.configured,
@@ -398,6 +408,13 @@ function publicServiceAccountConfig(config) {
   };
 }
 
+function publicAppsScriptStatusWriterConfig(config) {
+  return {
+    configured: Boolean(config.configured),
+    url: config.url || ""
+  };
+}
+
 function sanitizeConfigForClient(config) {
   return {
     ...config,
@@ -408,6 +425,10 @@ function sanitizeConfigForClient(config) {
     googleServiceAccount: config.googleServiceAccount ? {
       ...config.googleServiceAccount,
       privateKey: config.googleServiceAccount.privateKey ? "__CONFIGURED__" : ""
+    } : undefined,
+    appsScriptStatusWriter: config.appsScriptStatusWriter ? {
+      ...config.appsScriptStatusWriter,
+      secret: config.appsScriptStatusWriter.secret ? "__CONFIGURED__" : ""
     } : undefined
   };
 }
@@ -433,6 +454,15 @@ function mergeConfigForSave(existingConfig, nextConfig) {
     };
     if (merged.googleServiceAccount.privateKey === "__CONFIGURED__") {
       merged.googleServiceAccount.privateKey = existingConfig.googleServiceAccount?.privateKey || "";
+    }
+  }
+  if (existingConfig.appsScriptStatusWriter || nextConfig.appsScriptStatusWriter) {
+    merged.appsScriptStatusWriter = {
+      ...(existingConfig.appsScriptStatusWriter || {}),
+      ...(nextConfig.appsScriptStatusWriter || {})
+    };
+    if (merged.appsScriptStatusWriter.secret === "__CONFIGURED__") {
+      merged.appsScriptStatusWriter.secret = existingConfig.appsScriptStatusWriter?.secret || "";
     }
   }
   if (existingConfig.allowedEmails || nextConfig.allowedEmails) {
@@ -968,6 +998,34 @@ async function updateSubjectStatus(sheetUrl, payload, auth = null) {
     previousStatus,
     status: nextStatus,
     ...update
+  };
+}
+
+async function updateSubjectStatusViaAppsScript(sheetUrl, payload, writer) {
+  if (!writer?.url) throw new Error("Apps Script status writer is not configured");
+  const response = await fetch(writer.url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      ...payload,
+      sheetUrl,
+      secret: writer.secret || ""
+    })
+  });
+  const text = await response.text();
+  let json = {};
+  try {
+    json = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(`Apps Script did not return JSON (${response.status})`);
+  }
+  if (!response.ok || json.ok === false) {
+    throw new Error(json.error || `Apps Script write failed (${response.status})`);
+  }
+  csvCache.clear();
+  return {
+    source: "appsScript",
+    ...json
   };
 }
 
@@ -1811,7 +1869,8 @@ async function handleApi(req, res, url) {
       ok: true,
       auth: {
         ...publicAuthConfig(config),
-        serviceAccount: publicServiceAccountConfig(serviceConfig)
+        serviceAccount: publicServiceAccountConfig(serviceConfig),
+        appsScriptStatusWriter: publicAppsScriptStatusWriterConfig(await getAppsScriptStatusWriterConfig())
       },
       user: session ? {
         email: session.email,
@@ -2029,7 +2088,10 @@ async function handleApi(req, res, url) {
       return true;
     }
 
-    const result = await updateSubjectStatus(sheetUrl, body, await getSheetAuth(req));
+    const writer = await getAppsScriptStatusWriterConfig();
+    const result = writer.configured
+      ? await updateSubjectStatusViaAppsScript(sheetUrl, body, writer)
+      : await updateSubjectStatus(sheetUrl, body, await getSheetAuth(req));
     sendJson(res, 200, { ok: true, ...result });
     return true;
   }
