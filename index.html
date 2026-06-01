@@ -1543,6 +1543,17 @@
       background: #fbfcfe;
     }
 
+    .text-link {
+      color: var(--text);
+      text-decoration: none;
+      font-weight: 700;
+    }
+
+    .text-link:hover {
+      color: var(--blue);
+      text-decoration: underline;
+    }
+
     .dashboard-table-wrap {
       overflow: auto;
       padding: 0 16px 16px;
@@ -4516,13 +4527,21 @@
       return Math.max(0, Math.min(100, toNumber(value)));
     }
 
+    function renderGroupTextLink(label, url, options = {}) {
+      const text = String(label || "").trim() || "-";
+      const href = String(url || "").trim();
+      const className = options.className || "text-link";
+      if (!isHttpUrlClient(href)) return escapeHtml(text);
+      return `<a class="${escapeHtml(className)}" href="${escapeHtml(href)}" target="_blank" rel="noopener" title="${escapeHtml(options.title || `เปิดกลุ่ม ${text}`)}">${escapeHtml(text)}</a>`;
+    }
+
     function renderBarRows(rows, options = {}) {
       const maxValue = Math.max(1, ...rows.map(row => row.value));
       return rows.map(row => {
         const width = options.percent ? Math.max(2, Math.round(row.value)) : Math.max(2, Math.round((row.value / maxValue) * 100));
         return `
           <div class="bar-row">
-            <div class="bar-label" title="${escapeHtml(row.label)}">${escapeHtml(row.label)}</div>
+            <div class="bar-label" title="${escapeHtml(row.label)}">${renderGroupTextLink(row.label, row.url, { className: "text-link" })}</div>
             <div class="bar-track"><div class="bar-fill ${options.warn ? "warn" : ""} ${options.good ? "good" : ""}" style="width:${width}%"></div></div>
             <div class="bar-value">${escapeHtml(row.display)}</div>
           </div>
@@ -4536,7 +4555,7 @@
         return `
           <div class="strip-item">
             <div class="strip-head">
-              <span title="${escapeHtml(position.name)}">${escapeHtml(position.name)}</span>
+              <span title="${escapeHtml(position.name)}">${renderGroupTextLink(position.name, position.facebookUrl)}</span>
               <strong>${escapeHtml(position.percent || "0%")}</strong>
             </div>
             <div class="bar-track"><div class="bar-fill ${percent >= 70 ? "good" : percent < 30 ? "warn" : ""}" style="width:${Math.max(2, percent)}%"></div></div>
@@ -4557,6 +4576,7 @@
         .sort((a, b) => toNumber(b.missing) - toNumber(a.missing))
         .map(position => ({
           label: position.name,
+          url: position.facebookUrl || "",
           value: toNumber(position.missing),
           display: `${toNumber(position.missing).toLocaleString("th-TH")} ค้าง`
         }));
@@ -4658,13 +4678,13 @@
           : `<span class="subtext">ไม่มี URL</span>`;
         return `
           <tr>
-            <td><strong>${escapeHtml(position.name)}</strong></td>
+            <td><strong>${renderGroupTextLink(position.name, position.facebookUrl)}</strong></td>
             <td>${escapeHtml(position.total || "0")}</td>
             <td>${escapeHtml(position.done || "0")}</td>
             <td>${escapeHtml(position.missing || "0")}</td>
             <td><span class="badge ${position.percent === "100%" ? "good" : "warn"}">${escapeHtml(position.percent || "-")}</span></td>
             <td>
-              <div class="result-name">${escapeHtml(groupText)}</div>
+              <div class="result-name">${renderGroupTextLink(groupText, position.facebookUrl)}</div>
               <div style="margin-top:6px;">${link}</div>
             </td>
             <td>${closed ? `<span class="badge good">ปิดแล้ว</span>` : `<span class="badge">ยังเปิด</span>`}</td>
@@ -5515,7 +5535,7 @@
         <div class="result-item">
           <div>
             <div class="result-name">${escapeHtml(item.title)}</div>
-            <div class="result-path">${escapeHtml(item.position)}${item.group ? ` · ${escapeHtml(item.group)}` : ""}${item.order ? ` · ลำดับ ${escapeHtml(item.order)}` : ""}</div>
+            <div class="result-path">${renderGroupTextLink(item.position, item.facebookUrl || item.groupUrl || "")}${item.group ? ` · ${renderGroupTextLink(item.group, item.facebookUrl || item.groupUrl || "")}` : ""}${item.order ? ` · ลำดับ ${escapeHtml(item.order)}` : ""}</div>
             <div class="subtext">คะแนน ${item.score}% · เจอคำ: ${escapeHtml(item.matchedTerms.join(", "))}${item.documentStatus ? ` · เอกสาร: ${escapeHtml(item.documentStatus)}` : ""}${item.clipStatus ? ` · ลงคลิป: ${escapeHtml(item.clipStatus)}` : ""}</div>
           </div>
           <button type="button" data-action="load-global-position" data-position="${escapeHtml(item.position)}" data-query="${escapeHtml(query)}">โหลดตำแหน่งนี้</button>
@@ -5553,10 +5573,10 @@
         const manageButton = `<button type="button" data-action="load-global-position" data-position="${escapeHtml(position.position)}" data-query="${escapeHtml(query)}">จัดตำแหน่ง</button>`;
         return `
           <div class="smart-position-row">
-            <button class="smart-position-link" type="button" data-action="load-global-position" data-position="${escapeHtml(position.position)}" data-query="${escapeHtml(query)}" title="ไปจัดคลิปตามตำแหน่ง ${escapeHtml(position.position)}">
-              <div class="smart-clip-name">${escapeHtml(position.position)}</div>
-              <div class="clip-meta">${escapeHtml(position.group || "-")}${position.order ? ` · ลำดับ ${escapeHtml(position.order)}` : ""}${position.documentStatus ? ` · เอกสาร: ${escapeHtml(position.documentStatus)}` : ""}${position.clipStatus ? ` · ลงคลิป: ${escapeHtml(position.clipStatus)}` : ""} · ${escapeHtml(closed)}</div>
-            </button>
+            <div class="smart-position-link" title="ตำแหน่ง ${escapeHtml(position.position)}">
+              <div class="smart-clip-name">${renderGroupTextLink(position.position, position.facebookUrl)}</div>
+              <div class="clip-meta">${renderGroupTextLink(position.group || "-", position.facebookUrl)}${position.order ? ` · ลำดับ ${escapeHtml(position.order)}` : ""}${position.documentStatus ? ` · เอกสาร: ${escapeHtml(position.documentStatus)}` : ""}${position.clipStatus ? ` · ลงคลิป: ${escapeHtml(position.clipStatus)}` : ""} · ${escapeHtml(closed)}</div>
+            </div>
             <div class="smart-position-actions">${manageButton}${link}</div>
           </div>
         `;
@@ -5579,11 +5599,11 @@
       const link = position.facebookUrl
         ? `<a class="button-link" href="${escapeHtml(position.facebookUrl)}" target="_blank" rel="noopener">เปิดกลุ่ม</a>`
         : `<span class="subtext">ไม่มี URL กลุ่ม</span>`;
-      return `
-        <div class="subject-map-position">
+        return `
+          <div class="subject-map-position">
           <div>
-            <div class="smart-clip-name">${escapeHtml(position.position)}</div>
-            <div class="clip-meta">${escapeHtml(position.group || "-")}${position.order ? ` · ลำดับ ${escapeHtml(position.order)}` : ""} · ${escapeHtml(subjectMapStatusLabel(position))}</div>
+            <div class="smart-clip-name">${renderGroupTextLink(position.position, position.facebookUrl)}</div>
+            <div class="clip-meta">${renderGroupTextLink(position.group || "-", position.facebookUrl)}${position.order ? ` · ลำดับ ${escapeHtml(position.order)}` : ""} · ${escapeHtml(subjectMapStatusLabel(position))}</div>
           </div>
           <div class="subject-map-position-actions">
             <button type="button" data-action="load-global-position" data-position="${escapeHtml(position.position)}" data-query="${escapeHtml(query)}">จัดตำแหน่ง</button>
@@ -5668,14 +5688,14 @@
         <div class="subject-map-card">
           <div class="subject-map-head">
             <div>
-              <div class="subject-map-title">${escapeHtml(position.position)}</div>
+              <div class="subject-map-title">${renderGroupTextLink(position.position, position.facebookUrl)}</div>
               <div class="smart-badges">
                 <span class="badge ${nearby ? "warn" : "good"}">คะแนนสูงสุด ${escapeHtml(position.bestScore)}%</span>
                 <span class="badge">พบ ${escapeHtml(position.subjects.length)} วิชาที่อาจใช่</span>
                 <span class="badge ${linked ? "good" : "warn"}">${escapeHtml(subjectMapStatusLabel(position))}</span>
                 ${nearby ? `<span class="badge warn">กลุ่มใกล้เคียง</span>` : ""}
               </div>
-              <div class="smart-position">${escapeHtml(position.group || "-")}${position.orders?.length ? ` · ลำดับ ${escapeHtml(position.orders.join(", "))}` : ""} · เจอคำ: ${escapeHtml((position.matchedTerms || []).join(", ") || "-")}</div>
+              <div class="smart-position">${renderGroupTextLink(position.group || "-", position.facebookUrl)}${position.orders?.length ? ` · ลำดับ ${escapeHtml(position.orders.join(", "))}` : ""} · เจอคำ: ${escapeHtml((position.matchedTerms || []).join(", ") || "-")}</div>
             </div>
             <div class="subject-map-actions">
               <button type="button" data-action="load-global-position" data-position="${escapeHtml(position.position)}" data-query="${escapeHtml(query)}">จัดตำแหน่ง</button>
@@ -6007,7 +6027,7 @@
           <div class="smart-card-head">
             <div>
               <div class="smart-subject">${escapeHtml(item.title)}</div>
-              <div class="smart-position">${escapeHtml(item.position)}${item.group ? ` · ${escapeHtml(item.group)}` : ""}${item.order ? ` · ลำดับ ${escapeHtml(item.order)}` : ""}${positionCount > 1 ? ` · พบใน ${positionCount} ตำแหน่ง` : ""}</div>
+              <div class="smart-position">${renderGroupTextLink(item.position, item.facebookUrl || item.groupUrl || "")}${item.group ? ` · ${renderGroupTextLink(item.group, item.facebookUrl || item.groupUrl || "")}` : ""}${item.order ? ` · ลำดับ ${escapeHtml(item.order)}` : ""}${positionCount > 1 ? ` · พบใน ${positionCount} ตำแหน่ง` : ""}</div>
               <div class="smart-badges">
                 <span class="badge good">คะแนน ${item.score}%</span>
                 <span class="badge ${item.clips.length ? "good" : "warn"}">${item.clips.length ? `มีคลิป ${item.clips.length} ตัวเลือก` : "ยังไม่พบคลิป"}</span>

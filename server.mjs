@@ -1344,6 +1344,8 @@ async function searchSubjects(sheetUrl, query, limit = 80, auth = null) {
       const position = (row[positionIndex] || "").trim();
       const title = (row[subjectIndex] || "").trim();
       if (!position || !title) return null;
+      const meta = positionMeta.get(position) || {};
+      const facebookUrl = isUrl(row[linkIndex]) ? row[linkIndex] : meta.facebookUrl || "";
       const haystack = [
         position,
         title,
@@ -1366,6 +1368,7 @@ async function searchSubjects(sheetUrl, query, limit = 80, auth = null) {
         documentStatus: row[documentStatusIndex] || "",
         note: row[noteIndex] || "",
         clipStatus: row[clipStatusIndex] || "",
+        facebookUrl,
         matchedTerms,
         score: Math.round((matchedTerms.length / terms.length) * 100)
       };
