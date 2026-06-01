@@ -2017,14 +2017,14 @@
         <div class="brand-subtitle">Sunwu Course Organizer</div>
       </div>
       <div class="app-view-tabs" role="tablist" aria-label="หน้าแอพ">
-        <button class="view-tab active" type="button" data-view="dashboard">Dashboard</button>
-        <button class="view-tab" type="button" data-view="organizer">จัดคลิปตามตำแหน่ง</button>
-        <button class="view-tab" type="button" data-view="subjectMap">ค้นตำแหน่งจากวิชา</button>
-        <button class="view-tab" type="button" data-view="library">ค้นคลังทั้งหมด</button>
-        <button class="view-tab" type="button" data-view="documents">คลังเอกสาร</button>
-        <button class="view-tab" type="button" data-view="trial">ลองตำแหน่งใหม่</button>
-        <button class="view-tab hidden" type="button" data-view="reports">รายงาน</button>
-        <button class="view-tab hidden" type="button" data-view="settings">ตั้งค่า / ขั้นสูง</button>
+        <a class="view-tab active" href="?tab=dashboard" data-view="dashboard">Dashboard</a>
+        <a class="view-tab" href="?tab=organizer" data-view="organizer">จัดคลิปตามตำแหน่ง</a>
+        <a class="view-tab" href="?tab=subject-map" data-view="subjectMap">ค้นตำแหน่งจากวิชา</a>
+        <a class="view-tab" href="?tab=library" data-view="library">ค้นคลังทั้งหมด</a>
+        <a class="view-tab" href="?tab=documents" data-view="documents">คลังเอกสาร</a>
+        <a class="view-tab" href="?tab=trial" data-view="trial">ลองตำแหน่งใหม่</a>
+        <a class="view-tab hidden" href="?tab=reports" data-view="reports">รายงาน</a>
+        <a class="view-tab hidden" href="?tab=settings" data-view="settings">ตั้งค่า / ขั้นสูง</a>
       </div>
       <div class="top-status">
         <span>ระบบจัดการคลิป เอกสาร และ Dashboard คอร์สเรียน</span>
@@ -6827,7 +6827,11 @@
       if (!event.target.closest(".smart-search-box")) closeSmartSuggestions();
     });
     document.querySelectorAll(".view-tab").forEach(button => {
-      button.addEventListener("click", () => navigateToView(button.dataset.view));
+      button.addEventListener("click", event => {
+        if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        event.preventDefault();
+        navigateToView(button.dataset.view);
+      });
     });
     document.getElementById("smartSearchRunButton").addEventListener("click", () => {
       closeSmartSuggestions();
