@@ -1570,7 +1570,7 @@
 
     .dashboard-charts {
       display: grid;
-      grid-template-columns: 220px minmax(0, 1fr) minmax(260px, .72fr);
+      grid-template-columns: 220px minmax(0, 1fr);
       gap: 10px;
       padding: 12px 16px 0;
     }
@@ -1628,7 +1628,7 @@
 
     .bar-row {
       display: grid;
-      grid-template-columns: minmax(150px, .7fr) minmax(120px, 1fr) auto;
+      grid-template-columns: minmax(150px, .7fr) minmax(120px, 1fr) auto minmax(210px, .65fr);
       gap: 8px;
       align-items: center;
     }
@@ -1664,6 +1664,29 @@
     .bar-value {
       color: var(--muted);
       font-size: 12px;
+      white-space: nowrap;
+      text-align: right;
+    }
+
+    .bar-update {
+      min-width: 0;
+      display: grid;
+      gap: 2px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .bar-update-line {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .bar-update-item {
+      overflow: hidden;
+      text-overflow: ellipsis;
       white-space: nowrap;
       text-align: right;
     }
@@ -4581,11 +4604,22 @@
       const maxValue = Math.max(1, ...rows.map(row => row.value));
       return rows.map(row => {
         const width = options.percent ? Math.max(2, Math.round(row.value)) : Math.max(2, Math.round((row.value / maxValue) * 100));
+        const days = dashboardUpdateAge(row.latestUpdate);
+        const tone = dashboardUpdateTone(days);
+        const updateText = row.latestUpdate ? `ล่าสุด ${formatDateTime(row.latestUpdate)}` : "ยังไม่มีข้อมูลล่าสุด";
+        const itemText = row.latestUpdateItem || "ยังไม่มีรายการอัปเดต";
         return `
           <div class="bar-row">
             <div class="bar-label" title="${escapeHtml(row.label)}">${renderGroupTextLink(row.label, row.url, { className: "text-link" })}</div>
             <div class="bar-track"><div class="bar-fill ${options.warn ? "warn" : ""} ${options.good ? "good" : ""}" style="width:${width}%"></div></div>
             <div class="bar-value">${escapeHtml(row.display)}</div>
+            <div class="bar-update">
+              <div class="bar-update-line">
+                <span>${escapeHtml(updateText)}</span>
+                <span class="fresh-pill ${tone.klass}">${escapeHtml(tone.label)}</span>
+              </div>
+              <div class="bar-update-item" title="${escapeHtml(itemText)}">${escapeHtml(itemText)}</div>
+            </div>
           </div>
         `;
       }).join("") || `<div class="smart-empty">ไม่มีข้อมูลสำหรับแสดงกราฟ</div>`;
@@ -4656,7 +4690,9 @@
           label: position.name,
           url: position.facebookUrl || "",
           value: toNumber(position.missing),
-          display: `${toNumber(position.missing).toLocaleString("th-TH")} ค้าง`
+          display: `${toNumber(position.missing).toLocaleString("th-TH")} ค้าง`,
+          latestUpdate: position.latestUpdate || "",
+          latestUpdateItem: position.latestUpdateItem || ""
         }));
 
       const progressRows = [...visibleRows]
@@ -4675,10 +4711,6 @@
         <div class="chart-card">
           <div class="chart-title">งานค้างทุกตำแหน่ง</div>
           <div class="bar-list">${renderBarRows(missingRows, { warn: true })}</div>
-        </div>
-        <div class="chart-card">
-          <div class="chart-title">อัปเดตล่าสุดของกลุ่ม</div>
-          <div class="latest-update-list">${renderDashboardLatestUpdates(visibleRows)}</div>
         </div>
         <div class="chart-card" style="grid-column: 1 / -1;">
           <div class="chart-title">ความคืบหน้าทุกตำแหน่ง</div>
