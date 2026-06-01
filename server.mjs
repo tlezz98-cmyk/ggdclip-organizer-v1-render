@@ -790,6 +790,20 @@ const documentStatusHeaders = [
   "ลิงค์เอกสาร"
 ];
 
+const latestUpdateHeaders = [
+  "อัปเดตล่าสุด",
+  "อัพเดตล่าสุด",
+  "แก้ไขล่าสุด",
+  "ล่าสุด"
+];
+
+const latestUpdateItemHeaders = [
+  "รายการอัปเดตล่าสุด",
+  "รายการอัพเดตล่าสุด",
+  "วิชาที่อัปเดตล่าสุด",
+  "วิชาที่อัพเดตล่าสุด"
+];
+
 function findHeaderIndex(rows, names) {
   return rows.findIndex(row => names.every(name => row.map(cleanCell).includes(name)));
 }
@@ -958,6 +972,8 @@ async function updateSubjectStatus(sheetUrl, payload, auth = null) {
   const subjectIndex = columnIndex(header, ["ชื่อวิชา/หัวข้อ"]);
   const statusIndex = columnIndex(header, clipLinkStatusHeaders);
   const documentStatusIndex = columnIndex(header, documentStatusHeaders);
+  let latestUpdateIndex = columnIndex(header, latestUpdateHeaders);
+  let latestUpdateItemIndex = columnIndex(header, latestUpdateItemHeaders);
   const targetColumnIndex = statusType === "clip" ? statusIndex : documentStatusIndex;
   if (positionIndex < 0 || orderIndex < 0 || subjectIndex < 0) {
     throw new Error("ไม่พบคอลัมน์ตำแหน่ง/ลำดับ/ชื่อวิชาในชีต");
@@ -988,7 +1004,28 @@ async function updateSubjectStatus(sheetUrl, payload, auth = null) {
   const sheetName = await fetchSheetTitleByGid(spreadsheetId, manualEntryGid, auth);
   const match = matches[0];
   const previousStatus = cleanCell(match.row[targetColumnIndex]);
+  if (latestUpdateIndex < 0) {
+    latestUpdateIndex = header.length;
+    await updateGoogleSheetCell(spreadsheetId, sheetName, 1, latestUpdateIndex, "อัปเดตล่าสุด", auth);
+    header.push("อัปเดตล่าสุด");
+  }
+  if (latestUpdateItemIndex < 0) {
+    latestUpdateItemIndex = header.length;
+    await updateGoogleSheetCell(spreadsheetId, sheetName, 1, latestUpdateItemIndex, "รายการอัปเดตล่าสุด", auth);
+    header.push("รายการอัปเดตล่าสุด");
+  }
   const update = await updateGoogleSheetCell(spreadsheetId, sheetName, match.rowNumber, targetColumnIndex, nextStatus, auth);
+  const updatedAt = new Date().toISOString();
+  const latestUpdateItem = `${statusType === "clip" ? "ลิงก์คลิป" : "ลิงก์เอกสาร"}: ${nextStatus} · ${title}`;
+  let updatedCells = update.updatedCells || 0;
+  if (latestUpdateIndex >= 0) {
+    const latestUpdateResult = await updateGoogleSheetCell(spreadsheetId, sheetName, match.rowNumber, latestUpdateIndex, updatedAt, auth);
+    updatedCells += latestUpdateResult.updatedCells || 0;
+  }
+  if (latestUpdateItemIndex >= 0) {
+    const latestItemResult = await updateGoogleSheetCell(spreadsheetId, sheetName, match.rowNumber, latestUpdateItemIndex, latestUpdateItem, auth);
+    updatedCells += latestItemResult.updatedCells || 0;
+  }
   return {
     spreadsheetId,
     gid: manualEntryGid,
@@ -997,7 +1034,10 @@ async function updateSubjectStatus(sheetUrl, payload, auth = null) {
     statusType,
     previousStatus,
     status: nextStatus,
-    ...update
+    updatedAt,
+    latestUpdateItem,
+    ...update,
+    updatedCells
   };
 }
 
@@ -1068,6 +1108,8 @@ async function loadManualRows(spreadsheetId, auth = null) {
   const linkIndex = columnIndex(header, ["ลิงก์โพสต์/กลุ่ม", "ลิงก์กลุ่ม", "Facebook"]);
   const noteIndex = columnIndex(header, ["หมายเหตุ"]);
   const clipStatusIndex = columnIndex(header, ["ลงคลิป"]);
+  const latestUpdateIndex = columnIndex(header, latestUpdateHeaders);
+  const latestUpdateItemIndex = columnIndex(header, latestUpdateItemHeaders);
 
   if (positionIndex < 0 || subjectIndex < 0) {
     throw new Error("ไม่พบคอลัมน์ตำแหน่งหรือชื่อวิชา/หัวข้อในชีต");
@@ -1086,7 +1128,9 @@ async function loadManualRows(spreadsheetId, auth = null) {
       reusable: cleanCell(row[reusableIndex]),
       link: cleanCell(row[linkIndex]),
       note: cleanCell(row[noteIndex]),
-      clipStatus: cleanCell(row[clipStatusIndex])
+      clipStatus: cleanCell(row[clipStatusIndex]),
+      latestUpdate: cleanCell(row[latestUpdateIndex]),
+      latestUpdateItem: cleanCell(row[latestUpdateItemIndex])
     }));
 }
 
@@ -1102,6 +1146,24 @@ function buildGroupLinkMaps(manualRows) {
   return { byPosition, byGroup };
 }
 
+function buildLatestUpdateMap(manualRows) {
+  const byPosition = new Map();
+  for (const row of manualRows) {
+    const updatedAt = cleanCell(row.latestUpdate);
+    if (!row.position || !updatedAt) continue;
+    const timestamp = Date.parse(updatedAt);
+    if (!Number.isFinite(timestamp)) continue;
+    const existing = byPosition.get(row.position);
+    if (existing && existing.timestamp >= timestamp) continue;
+    byPosition.set(row.position, {
+      updatedAt,
+      timestamp,
+      item: cleanCell(row.latestUpdateItem) || row.title || ""
+    });
+  }
+  return byPosition;
+}
+
 async function loadDashboard(sheetUrl, auth = null) {
   const spreadsheetId = extractSpreadsheetId(sheetUrl);
   if (!spreadsheetId) throw new Error("ไม่พบ spreadsheet id");
@@ -1111,6 +1173,7 @@ async function loadDashboard(sheetUrl, auth = null) {
     loadManualRows(spreadsheetId, auth)
   ]);
   const groupLinks = buildGroupLinkMaps(manualRows);
+  const latestUpdates = buildLatestUpdateMap(manualRows);
   const rows = parseCsv(dashboardCsv);
   const headerIndex = findHeaderIndex(rows, ["ตำแหน่ง", "วิชาทั้งหมด", "% สำเร็จ"]);
   if (headerIndex < 0) throw new Error("ไม่พบตารางสรุปตามตำแหน่งใน Dashboard");
@@ -1130,6 +1193,7 @@ async function loadDashboard(sheetUrl, auth = null) {
       const name = cleanCell(row[positionIndex]);
       const groupLabel = cleanCell(row[groupLinkIndex]);
       const groupKey = normalizeGroupKey(groupLabel);
+      const latestUpdate = latestUpdates.get(name) || {};
       const facebookUrl =
         (isUrl(groupLabel) ? groupLabel : "") ||
         groupLinks.byPosition.get(name) ||
@@ -1143,6 +1207,8 @@ async function loadDashboard(sheetUrl, auth = null) {
         percent: cleanCell(row[percentIndex]),
         groupLabel,
         facebookUrl,
+        latestUpdate: latestUpdate.updatedAt || "",
+        latestUpdateItem: latestUpdate.item || "",
         closedCourse: cleanCell(row[closedCourseIndex]) || "FALSE"
       };
     })

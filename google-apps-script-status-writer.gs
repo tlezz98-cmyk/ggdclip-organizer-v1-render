@@ -33,6 +33,20 @@ const DOCUMENT_STATUS_HEADERS = [
   'ลิงค์เอกสาร'
 ];
 
+const LATEST_UPDATE_HEADERS = [
+  'อัปเดตล่าสุด',
+  'อัพเดตล่าสุด',
+  'แก้ไขล่าสุด',
+  'ล่าสุด'
+];
+
+const LATEST_UPDATE_ITEM_HEADERS = [
+  'รายการอัปเดตล่าสุด',
+  'รายการอัพเดตล่าสุด',
+  'วิชาที่อัปเดตล่าสุด',
+  'วิชาที่อัพเดตล่าสุด'
+];
+
 function doGet() {
   return jsonOutput({ ok: true, message: 'Clip Organizer status writer is ready' });
 }
@@ -93,6 +107,8 @@ function updateSubjectStatus(payload) {
   const subjectIndex = columnIndex(header, ['ชื่อวิชา/หัวข้อ']);
   const clipStatusIndex = columnIndex(header, CLIP_STATUS_HEADERS);
   const documentStatusIndex = columnIndex(header, DOCUMENT_STATUS_HEADERS);
+  const latestUpdateIndex = ensureColumn(sheet, header, LATEST_UPDATE_HEADERS, 'อัปเดตล่าสุด');
+  const latestUpdateItemIndex = ensureColumn(sheet, header, LATEST_UPDATE_ITEM_HEADERS, 'รายการอัปเดตล่าสุด');
   const targetColumnIndex = statusType === 'clip' ? clipStatusIndex : documentStatusIndex;
 
   if (positionIndex < 0 || orderIndex < 0 || subjectIndex < 0) {
@@ -122,7 +138,11 @@ function updateSubjectStatus(payload) {
 
   const match = matches[0];
   const previousStatus = cleanCell(match.row[targetColumnIndex]);
+  const updatedAt = new Date().toISOString();
+  const latestUpdateItem = (statusType === 'clip' ? 'ลิงก์คลิป' : 'ลิงก์เอกสาร') + ': ' + nextStatus + ' · ' + title;
   sheet.getRange(match.rowNumber, targetColumnIndex + 1).setValue(nextStatus);
+  sheet.getRange(match.rowNumber, latestUpdateIndex + 1).setValue(updatedAt);
+  sheet.getRange(match.rowNumber, latestUpdateItemIndex + 1).setValue(latestUpdateItem);
   SpreadsheetApp.flush();
 
   return {
@@ -134,7 +154,9 @@ function updateSubjectStatus(payload) {
     statusType,
     previousStatus,
     status: nextStatus,
-    updatedCells: 1
+    updatedAt,
+    latestUpdateItem,
+    updatedCells: 3
   };
 }
 
@@ -161,6 +183,15 @@ function columnIndex(header, names) {
     if (index >= 0) return index;
   }
   return -1;
+}
+
+function ensureColumn(sheet, header, names, defaultName) {
+  const existingIndex = columnIndex(header, names);
+  if (existingIndex >= 0) return existingIndex;
+  const nextColumn = header.length + 1;
+  sheet.getRange(1, nextColumn).setValue(defaultName);
+  header.push(defaultName);
+  return nextColumn - 1;
 }
 
 function cleanCell(value) {
