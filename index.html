@@ -50,7 +50,7 @@
       overflow-x: hidden;
     }
 
-    button, input, select {
+    button, input, select, .view-tab {
       font: inherit;
       letter-spacing: 0;
     }
@@ -128,18 +128,49 @@
     }
 
     .view-tab {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       min-height: 32px;
+      border: 1px solid rgba(255,255,255,.24);
       border-color: rgba(255,255,255,.24);
       background: rgba(255,255,255,.08);
       color: #e9eef8;
+      border-radius: 6px;
+      padding: 0 12px;
+      text-decoration: none;
       white-space: normal;
       line-height: 1.2;
+      cursor: pointer;
+      user-select: none;
     }
 
-    .view-tab.active {
+    .view-tab:visited {
+      color: #e9eef8;
+    }
+
+    .view-tab:hover {
+      border-color: rgba(255,255,255,.42);
+      background: rgba(255,255,255,.14);
+      color: white;
+      text-decoration: none;
+    }
+
+    .view-tab:focus-visible {
+      outline: 2px solid rgba(255,255,255,.72);
+      outline-offset: 2px;
+    }
+
+    .view-tab.active,
+    .view-tab.active:visited {
       background: white;
       color: #101828;
       border-color: white;
+    }
+
+    .view-tab.active:hover {
+      background: white;
+      color: #101828;
     }
 
     .top-status {
