@@ -3564,7 +3564,7 @@
             <div class="clip-list">
               ${renderClipOptions(item)}
             </div>
-            <button type="button" data-action="manual-search" data-row="${item.no}">ค้นคลิปเอง</button>
+            <button type="button" data-action="manual-search" data-subject-key="${escapeHtml(subjectClientKey(item))}" data-row="${escapeHtml(item.no)}">ค้นคลิปเอง</button>
           </td>
           <td>
             <div class="reason">${item.reason}</div>
@@ -3607,7 +3607,7 @@
               <div><div class="subject-card-label">หมายเหตุ</div><div class="subtext">${escapeHtml(note || "ยังไม่มี")}</div></div>
             </div>
             <div class="toolbar">
-              <button type="button" data-action="manual-search" data-row="${escapeHtml(item.no)}">เลือก/ค้นคลิป</button>
+              <button type="button" data-action="manual-search" data-subject-key="${escapeHtml(subjectClientKey(item))}" data-row="${escapeHtml(item.no)}">เลือก/ค้นคลิป</button>
               <button type="button" data-action="edit-note" data-row="${escapeHtml(item.no)}">แก้หมายเหตุ</button>
             </div>
           </div>
@@ -6596,9 +6596,14 @@
         .replaceAll("'", "&#039;");
     }
 
-    function openManualSearch(rowNo) {
-      const item = subjects.find(row => row.no === rowNo);
+    function findSubjectForManualAction(identifier, fallbackRowNo = "") {
+      return findSubjectByClientKey(identifier) || subjects.find(row => row.no === fallbackRowNo || row.no === identifier);
+    }
+
+    function openManualSearch(identifier, fallbackRowNo = "") {
+      const item = findSubjectForManualAction(identifier, fallbackRowNo);
       if (!item) return;
+      const subjectKey = subjectClientKey(item);
       document.getElementById("modalTitle").textContent = "ค้นคลิปเอง";
       document.getElementById("modalBody").innerHTML = `
         <div class="preview-line"><strong>วิชา</strong><span>${escapeHtml(item.title)}</span></div>
@@ -6612,13 +6617,13 @@
       document.getElementById("disabledCreate").style.display = "none";
       document.getElementById("modalBackdrop").classList.add("open");
 
-      document.getElementById("manualSearchButton").addEventListener("click", () => runManualClipSearch(item.no));
+      document.getElementById("manualSearchButton").addEventListener("click", () => runManualClipSearch(subjectKey));
       document.getElementById("manualSearchInput").addEventListener("keydown", event => {
-        if (event.key === "Enter") runManualClipSearch(item.no);
+        if (event.key === "Enter") runManualClipSearch(subjectKey);
       });
     }
 
-    async function runManualClipSearch(rowNo) {
+    async function runManualClipSearch(subjectKey) {
       const query = document.getElementById("manualSearchInput").value.trim();
       const resultBox = document.getElementById("manualSearchResults");
       if (!query) {
@@ -6663,10 +6668,10 @@
           button.addEventListener("click", () => copyManualSearchPath(result.results[Number(button.dataset.manualCopy)]));
         });
         resultBox.querySelectorAll("[data-pick-main]").forEach(button => {
-          button.addEventListener("click", () => addManualClip(rowNo, result.results[Number(button.dataset.pickMain)], "ตัวเลือกหลัก", true));
+          button.addEventListener("click", () => addManualClip(subjectKey, result.results[Number(button.dataset.pickMain)], "ตัวเลือกหลัก", true));
         });
         resultBox.querySelectorAll("[data-pick-related]").forEach(button => {
-          button.addEventListener("click", () => addManualClip(rowNo, result.results[Number(button.dataset.pickRelated)], "อาจเกี่ยว", false));
+          button.addEventListener("click", () => addManualClip(subjectKey, result.results[Number(button.dataset.pickRelated)], "อาจเกี่ยว", false));
         });
       } catch (error) {
         resultBox.innerHTML = `<div class="warning">${escapeHtml(error.message)}</div>`;
@@ -6713,8 +6718,8 @@
       `);
     }
 
-    function addManualClip(rowNo, file, label, checked) {
-      const item = subjects.find(row => row.no === rowNo);
+    function addManualClip(subjectKey, file, label, checked) {
+      const item = findSubjectByClientKey(subjectKey);
       if (!item) return;
       const exists = item.clips.some(clip => clip.path === file.path || clip.name === file.name);
       if (!exists) {
@@ -6856,7 +6861,7 @@
 
       const searchButton = event.target.closest("[data-action='manual-search']");
       if (searchButton) {
-        openManualSearch(searchButton.dataset.row);
+        openManualSearch(searchButton.dataset.subjectKey || "", searchButton.dataset.row || "");
         return;
       }
 
@@ -6869,7 +6874,7 @@
     document.getElementById("mobileSubjectCards").addEventListener("click", event => {
       const searchButton = event.target.closest("[data-action='manual-search']");
       if (searchButton) {
-        openManualSearch(searchButton.dataset.row);
+        openManualSearch(searchButton.dataset.subjectKey || "", searchButton.dataset.row || "");
         return;
       }
       const noteButton = event.target.closest("[data-action='edit-note']");
