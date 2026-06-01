@@ -2197,6 +2197,7 @@
             <div class="panel-title">รายวิชาและคลิปที่พบ</div>
             <div class="subtext" id="positionSummary">14 วิชา จาก สปอว. นักทรัพย์</div>
           </div>
+          <a class="button-link hidden" id="positionGroupLink" href="#" target="_blank" rel="noopener">เปิดกลุ่ม</a>
           <div class="toolbar">
             <input id="searchInput" class="control search" placeholder="ค้นหาวิชา/คลิป">
             <button class="icon" title="รีเซ็ตตัวกรอง" id="resetButton">↺</button>
@@ -5133,6 +5134,19 @@
       const select = document.getElementById("position");
       const option = select.selectedOptions[0];
       if (!option) return;
+      const groupLink = document.getElementById("positionGroupLink");
+      const facebookUrl = option.value === allPositionsValue ? "" : (option.dataset.facebookUrl || "").trim();
+      if (groupLink) {
+        if (facebookUrl) {
+          groupLink.href = facebookUrl;
+          groupLink.classList.remove("hidden");
+          groupLink.title = option.dataset.groupLabel || `เปิดกลุ่มของ ${option.value}`;
+        } else {
+          groupLink.href = "#";
+          groupLink.classList.add("hidden");
+          groupLink.removeAttribute("title");
+        }
+      }
       const total = option.value === allPositionsValue ? (option.dataset.total || 0) : (subjects.length || option.dataset.total || 0);
       const done = option.dataset.done || "-";
       const missing = option.dataset.missing || "-";
