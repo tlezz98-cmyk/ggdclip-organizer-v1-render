@@ -3756,6 +3756,13 @@
       }).format(new Date(iso));
     }
 
+    function formatDateOnly(iso) {
+      if (!iso) return "-";
+      return new Intl.DateTimeFormat("th-TH", {
+        dateStyle: "medium"
+      }).format(new Date(iso));
+    }
+
     function formatFileSize(bytes) {
       const size = Number(bytes || 0);
       if (!size) return "-";
@@ -4606,7 +4613,7 @@
         const width = options.percent ? Math.max(2, Math.round(row.value)) : Math.max(2, Math.round((row.value / maxValue) * 100));
         const days = dashboardUpdateAge(row.latestUpdate);
         const tone = dashboardUpdateTone(days);
-        const updateText = row.latestUpdate ? `ล่าสุด ${formatDateTime(row.latestUpdate)}` : "ยังไม่มีข้อมูลล่าสุด";
+        const updateText = row.latestUpdate ? `ล่าสุด ${formatDateOnly(row.latestUpdate)}` : "ยังไม่มีข้อมูลล่าสุด";
         const itemText = row.latestUpdateItem || "ยังไม่มีรายการอัปเดต";
         return `
           <div class="bar-row">
