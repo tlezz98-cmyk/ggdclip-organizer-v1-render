@@ -631,6 +631,50 @@
       color: #667085;
     }
 
+    .status-toggle {
+      min-height: 24px;
+      padding: 4px 8px;
+      cursor: pointer;
+      box-shadow: none;
+    }
+
+    .status-toggle:hover {
+      filter: brightness(.98);
+      transform: translateY(-1px);
+    }
+
+    .status-toast {
+      position: fixed;
+      left: 50%;
+      bottom: 22px;
+      z-index: 80;
+      display: none;
+      align-items: center;
+      gap: 10px;
+      max-width: min(680px, calc(100vw - 24px));
+      padding: 10px 12px;
+      border: 1px solid #1d2939;
+      border-radius: 8px;
+      background: #101828;
+      color: white;
+      box-shadow: 0 18px 50px rgba(15,23,42,.28);
+      transform: translateX(-50%);
+    }
+
+    .status-toast.open { display: flex; }
+
+    .status-toast button {
+      min-height: 28px;
+      border-color: rgba(255,255,255,.28);
+      background: rgba(255,255,255,.08);
+      color: white;
+    }
+
+    .status-toast button:hover {
+      background: rgba(255,255,255,.16);
+      border-color: rgba(255,255,255,.42);
+    }
+
     .config-pill {
       display: inline-flex;
       align-items: center;
@@ -2719,6 +2763,10 @@
       </div>
     </div>
   </div>
+  <div class="status-toast" id="statusToast" role="status" aria-live="polite">
+    <span id="statusToastText">เปลี่ยนสถานะแล้ว</span>
+    <button type="button" id="statusToastUndo">ย้อนกลับ</button>
+  </div>
 
   <script>
     let appConfig = {
@@ -3566,14 +3614,14 @@
       const raw = formatLinkStatus(item);
       const kind = getLinkStatusKind(item);
       const klass = kind === "done" || kind === "pending" ? kind : "";
-      return `<span class="link-status ${klass}">${escapeHtml(raw)}</span>`;
+      return `<button type="button" class="link-status status-toggle ${klass}" data-action="toggle-subject-status" data-status-type="clip" data-subject-key="${escapeHtml(subjectClientKey(item))}" title="คลิกเพื่อเปลี่ยนสถานะลิงก์คลิป">${escapeHtml(raw)}</button>`;
     }
 
     function renderDocumentStatus(item) {
       const raw = formatSheetDocumentStatus(item);
       const kind = getSheetDocumentStatusKind(item);
       const klass = kind === "done" || kind === "pending" ? kind : "";
-      return `<span class="link-status ${klass}">${escapeHtml(raw)}</span>`;
+      return `<button type="button" class="link-status status-toggle ${klass}" data-action="toggle-subject-status" data-status-type="document" data-subject-key="${escapeHtml(subjectClientKey(item))}" title="คลิกเพื่อเปลี่ยนสถานะเอกสาร">${escapeHtml(raw)}</button>`;
     }
 
     function renderClipMeta(clip) {
@@ -3633,6 +3681,115 @@
 
     function setStatus(message) {
       document.getElementById("appStatus").textContent = message;
+    }
+
+    function subjectClientKey(item) {
+      return [subjectPositionName(item), item?.no || item?.sheet?.order || "", item?.title || ""].map(value => String(value || "").trim()).join("||");
+    }
+
+    function findSubjectByClientKey(key) {
+      return subjects.find(item => subjectClientKey(item) === key);
+    }
+
+    function canonicalTwoStateStatus(kind) {
+      return kind === "done" ? "ลงลิงก์แล้ว" : "ยังไม่ลงลิงก์";
+    }
+
+    let lastStatusUndo = null;
+    let statusToastTimer = null;
+
+    function showStatusUndoToast(message, undoAction) {
+      const toast = document.getElementById("statusToast");
+      const text = document.getElementById("statusToastText");
+      if (!toast || !text) return;
+      lastStatusUndo = undoAction;
+      text.textContent = message;
+      toast.classList.add("open");
+      clearTimeout(statusToastTimer);
+      statusToastTimer = setTimeout(() => {
+        toast.classList.remove("open");
+        lastStatusUndo = null;
+      }, 9000);
+    }
+
+    function hideStatusUndoToast() {
+      const toast = document.getElementById("statusToast");
+      if (toast) toast.classList.remove("open");
+      clearTimeout(statusToastTimer);
+      lastStatusUndo = null;
+    }
+
+    function applySubjectStatusLocally(item, statusType, status) {
+      if (statusType === "clip") {
+        item.linkStatus = status;
+        item.sheetStatus = status;
+        if (item.sheet) {
+          item.sheet.sheetStatus = status;
+        }
+        return;
+      }
+      item.documentStatus = status;
+      if (item.sheet) item.sheet.documentStatus = status;
+    }
+
+    async function saveSubjectStatusToSheet(item, statusType, nextStatus) {
+      const sheetUrl = document.getElementById("sheetUrl").value.trim();
+      if (!sheetUrl) throw new Error("ยังไม่ได้ใส่ Google Sheet URL");
+      const payload = {
+        sheetUrl,
+        statusType,
+        status: nextStatus,
+        position: subjectPositionName(item),
+        order: item.no || item.sheet?.order || "",
+        title: item.title || ""
+      };
+      const response = await fetch("/api/update-subject-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.ok) throw new Error(result.error || "บันทึกสถานะลง Google Sheet ไม่สำเร็จ");
+      return result;
+    }
+
+    async function toggleSubjectSheetStatus(button) {
+      const item = findSubjectByClientKey(button.dataset.subjectKey || "");
+      const statusType = button.dataset.statusType;
+      if (!item || !["clip", "document"].includes(statusType)) return;
+      const currentKind = statusType === "clip" ? getLinkStatusKind(item) : getSheetDocumentStatusKind(item);
+      const previousStatus = canonicalTwoStateStatus(currentKind);
+      const nextStatus = currentKind === "done" ? "ยังไม่ลงลิงก์" : "ลงลิงก์แล้ว";
+      button.disabled = true;
+      applySubjectStatusLocally(item, statusType, nextStatus);
+      renderRows();
+      updateSummary();
+      setStatus(`สถานะ: กำลังบันทึก ${nextStatus} ไปที่ Google Sheets`);
+
+      try {
+        await saveSubjectStatusToSheet(item, statusType, nextStatus);
+        setStatus(`สถานะ: บันทึก ${nextStatus} ลง Google Sheets แล้ว`);
+        showStatusUndoToast(`เปลี่ยน${statusType === "clip" ? "สถานะลิงก์คลิป" : "สถานะเอกสาร"}เป็น ${nextStatus} แล้ว`, async () => {
+          applySubjectStatusLocally(item, statusType, previousStatus);
+          renderRows();
+          updateSummary();
+          setStatus(`สถานะ: กำลังย้อนกลับเป็น ${previousStatus}`);
+          try {
+            await saveSubjectStatusToSheet(item, statusType, previousStatus);
+            setStatus(`สถานะ: ย้อนกลับเป็น ${previousStatus} แล้ว`);
+          } catch (error) {
+            applySubjectStatusLocally(item, statusType, nextStatus);
+            renderRows();
+            updateSummary();
+            setStatus(`สถานะ: ย้อนกลับไม่สำเร็จ - ${error.message}`);
+          }
+        });
+      } catch (error) {
+        applySubjectStatusLocally(item, statusType, previousStatus);
+        renderRows();
+        updateSummary();
+        setStatus(`สถานะ: บันทึกไม่สำเร็จ - ${error.message}`);
+      }
     }
 
     function cleanPathInput(value) {
@@ -6601,6 +6758,13 @@
     });
 
     document.getElementById("rows").addEventListener("click", event => {
+      const statusButton = event.target.closest("[data-action='toggle-subject-status']");
+      if (statusButton) {
+        event.preventDefault();
+        toggleSubjectSheetStatus(statusButton);
+        return;
+      }
+
       const revealButton = event.target.closest("[data-action='reveal-source']");
       if (revealButton) {
         if (appConfig.onlineMode) {
@@ -6644,6 +6808,13 @@
     });
 
     document.getElementById("mobileSubjectCards").addEventListener("click", event => {
+      const statusButton = event.target.closest("[data-action='toggle-subject-status']");
+      if (statusButton) {
+        event.preventDefault();
+        toggleSubjectSheetStatus(statusButton);
+        return;
+      }
+
       const searchButton = event.target.closest("[data-action='manual-search']");
       if (searchButton) {
         openManualSearch(searchButton.dataset.row);
@@ -7024,6 +7195,11 @@
       confirmImportantAction("ทดสอบ path ภาษาไทย", "คุณกำลังจะสร้างไฟล์ทดสอบในโฟลเดอร์ปลายทาง เฉพาะผู้ดูแลระบบควรใช้เครื่องมือนี้", () => runStressTest());
     });
     document.getElementById("disabledCreate").onclick = createHardLinksFromPreview;
+    document.getElementById("statusToastUndo").addEventListener("click", () => {
+      const undo = lastStatusUndo;
+      hideStatusUndoToast();
+      if (undo) undo();
+    });
     document.getElementById("googleLoginButton").addEventListener("click", () => {
       window.location.href = "/auth/google/login";
     });

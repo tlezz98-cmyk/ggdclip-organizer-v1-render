@@ -23,11 +23,11 @@ const googleScopes = [
   "openid",
   "email",
   "profile",
-  "https://www.googleapis.com/auth/spreadsheets.readonly",
+  "https://www.googleapis.com/auth/spreadsheets",
   "https://www.googleapis.com/auth/drive.readonly"
 ];
 const serviceAccountScopes = [
-  "https://www.googleapis.com/auth/spreadsheets.readonly",
+  "https://www.googleapis.com/auth/spreadsheets",
   "https://www.googleapis.com/auth/drive.readonly"
 ];
 const authSessions = new Map();
@@ -805,6 +805,21 @@ function setCachedCsv(key, text) {
   }
 }
 
+function columnNumberToA1(index) {
+  let n = Number(index) + 1;
+  let letters = "";
+  while (n > 0) {
+    const rem = (n - 1) % 26;
+    letters = String.fromCharCode(65 + rem) + letters;
+    n = Math.floor((n - 1) / 26);
+  }
+  return letters;
+}
+
+function sameSheetKey(a, b) {
+  return cleanCell(a).replace(/\s+/g, " ").toLowerCase() === cleanCell(b).replace(/\s+/g, " ").toLowerCase();
+}
+
 async function fetchPublicCsv(csvUrl) {
   const cacheKey = `public:${csvUrl}`;
   const cached = getCachedCsv(cacheKey);
@@ -869,6 +884,91 @@ async function fetchPrivateSheetCsvByName(spreadsheetId, sheetName, auth) {
   const text = rowsToCsv(data.values || []);
   setCachedCsv(cacheKey, text);
   return text;
+}
+
+async function updateGoogleSheetCell(spreadsheetId, sheetName, rowNumber, columnIndexValue, value, auth) {
+  if (!auth?.accessToken) {
+    throw new Error("ต้องตั้งค่า Service Account หรือเข้าสู่ระบบ Google ที่มีสิทธิ์แก้ชีตก่อน");
+  }
+  const column = columnNumberToA1(columnIndexValue);
+  const range = `${sheetsRangeForWholeSheet(sheetName)}!${column}${rowNumber}`;
+  const apiUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`;
+  const response = await fetch(apiUrl, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${auth.accessToken}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ values: [[value]] })
+  });
+  const json = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      throw new Error("บัญชีที่แอพใช้ยังไม่มีสิทธิ์แก้ Google Sheet นี้ กรุณาแชร์ชีตให้ Service Account เป็น Editor");
+    }
+    throw new Error(json.error?.message || `เขียน Google Sheet ไม่สำเร็จ (${response.status})`);
+  }
+  csvCache.clear();
+  return { range, updatedCells: json.updatedCells || 0 };
+}
+
+async function updateSubjectStatus(sheetUrl, payload, auth = null) {
+  const spreadsheetId = extractSpreadsheetId(sheetUrl);
+  if (!spreadsheetId) throw new Error("ไม่พบ spreadsheet id");
+  const statusType = String(payload.statusType || "").trim();
+  const nextStatus = cleanCell(payload.status);
+  if (!["clip", "document"].includes(statusType)) throw new Error("ประเภทสถานะไม่ถูกต้อง");
+  if (!["ยังไม่ลงลิงก์", "ลงลิงก์แล้ว"].includes(nextStatus)) throw new Error("สถานะต้องเป็น ยังไม่ลงลิงก์ หรือ ลงลิงก์แล้ว เท่านั้น");
+
+  const csvText = await fetchSheetCsv(spreadsheetId, manualEntryGid, auth);
+  const rows = parseCsv(csvText);
+  const header = rows[0] || [];
+  const positionIndex = columnIndex(header, ["ตำแหน่ง"]);
+  const orderIndex = columnIndex(header, ["ลำดับ"]);
+  const subjectIndex = columnIndex(header, ["ชื่อวิชา/หัวข้อ"]);
+  const statusIndex = columnIndex(header, clipLinkStatusHeaders);
+  const documentStatusIndex = columnIndex(header, documentStatusHeaders);
+  const targetColumnIndex = statusType === "clip" ? statusIndex : documentStatusIndex;
+  if (positionIndex < 0 || orderIndex < 0 || subjectIndex < 0) {
+    throw new Error("ไม่พบคอลัมน์ตำแหน่ง/ลำดับ/ชื่อวิชาในชีต");
+  }
+  if (targetColumnIndex < 0) {
+    throw new Error(statusType === "clip" ? "ไม่พบคอลัมน์สถานะลิงก์คลิปในชีต" : "ไม่พบคอลัมน์สถานะเอกสารในชีต");
+  }
+
+  const position = cleanCell(payload.position);
+  const order = cleanCell(payload.order);
+  const title = cleanCell(payload.title);
+  if (!position || !order || !title) throw new Error("ข้อมูลตำแหน่ง/ลำดับ/ชื่อวิชาไม่ครบ");
+
+  const matches = rows.slice(1)
+    .map((row, index) => ({ row, rowNumber: index + 2 }))
+    .filter(({ row }) =>
+      sameSheetKey(row[positionIndex], position) &&
+      sameSheetKey(row[orderIndex], order) &&
+      sameSheetKey(row[subjectIndex], title)
+    );
+
+  if (matches.length !== 1) {
+    throw new Error(matches.length === 0
+      ? "ไม่พบแถวที่ตรงกับตำแหน่ง/ลำดับ/ชื่อวิชานี้ จึงยังไม่เขียนชีต"
+      : `พบ ${matches.length} แถวที่ตรงกัน จึงยังไม่เขียนเพื่อกันแก้ผิดแถว`);
+  }
+
+  const sheetName = await fetchSheetTitleByGid(spreadsheetId, manualEntryGid, auth);
+  const match = matches[0];
+  const previousStatus = cleanCell(match.row[targetColumnIndex]);
+  const update = await updateGoogleSheetCell(spreadsheetId, sheetName, match.rowNumber, targetColumnIndex, nextStatus, auth);
+  return {
+    spreadsheetId,
+    gid: manualEntryGid,
+    rowNumber: match.rowNumber,
+    columnIndex: targetColumnIndex,
+    statusType,
+    previousStatus,
+    status: nextStatus,
+    ...update
+  };
 }
 
 async function fetchSheetCsv(spreadsheetId, gid, auth = null) {
@@ -1344,6 +1444,13 @@ const smartAliases = [
   }
 ];
 
+smartAliases.push({
+  title: "พระราชบัญญัติการปฏิบัติราชการทางอิเล็กทรอนิกส์ พ.ศ. 2565",
+  query: "การปฏิบัติราชการทางอิเล็กทรอนิกส์",
+  keys: ["การปฏิบัติราชการทางอิเล็กทรอนิกส์", "ปฏิบัติราชการทางอิเล็กทรอนิกส์", "ราชการทางอิเล็กทรอนิกส์", "ราชการอิเล็กทรอนิกส์", "อิเล็กทรอนิกส์", "2565"],
+  terms: ["การปฏิบัติราชการทางอิเล็กทรอนิกส์", "ปฏิบัติราชการทางอิเล็กทรอนิกส์", "ราชการทางอิเล็กทรอนิกส์", "วิธีปฏิบัติราชการอิเล็กทรอนิกส์", "ปฏิบัติราชการอิเล็กทรอนิกส์", "ราชการอิเล็กทรอนิกส์", "อิเล็กทรอนิกส์", "2565"]
+});
+
 function expandSmartTerms(query) {
   const text = String(query || "").trim();
   const lower = text.toLowerCase();
@@ -1357,10 +1464,26 @@ function expandSmartTerms(query) {
   return [...terms];
 }
 
+function repairUtf8Mojibake(value) {
+  const text = String(value || "");
+  if (!/[à-ÿ]/.test(text)) return "";
+  try {
+    return Buffer.from(text, "latin1").toString("utf8");
+  } catch {
+    return "";
+  }
+}
+
 function normalizeSearchText(value) {
-  return normalizeThaiDigits(value)
+  const original = String(value || "");
+  const repaired = repairUtf8Mojibake(original);
+  const text = repaired && repaired !== original ? `${original} ${repaired}` : original;
+  return normalizeThaiDigits(text)
+    .normalize("NFKC")
+    .replace(/\u0E4D\u0E32/g, "ำ")
     .toLowerCase()
     .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/ฯ/g, "")
     .replace(/[()_.\-–—/,:;|[\]{}"']/g, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -1398,6 +1521,18 @@ const conceptSearchTerms = [
   "บัญชี",
   "งบประมาณ"
 ];
+
+conceptSearchTerms.push(
+  "การปฏิบัติราชการทางอิเล็กทรอนิกส์",
+  "ปฏิบัติราชการทางอิเล็กทรอนิกส์",
+  "ราชการทางอิเล็กทรอนิกส์",
+  "วิธีปฏิบัติราชการอิเล็กทรอนิกส์",
+  "ปฏิบัติราชการอิเล็กทรอนิกส์",
+  "ราชการอิเล็กทรอนิกส์",
+  "อิเล็กทรอนิกส์",
+  "พรบ อิเล็กทรอนิกส์",
+  "พ.ร.บ. อิเล็กทรอนิกส์"
+);
 
 function addConceptSearchTerms(value, terms) {
   const normalized = normalizeSearchText(value);
@@ -1886,6 +2021,19 @@ async function handleApi(req, res, url) {
     return true;
   }
 
+  if (url.pathname === "/api/update-subject-status" && req.method === "POST") {
+    const body = await readRequestJson(req);
+    const sheetUrl = body.sheetUrl;
+    if (!sheetUrl || typeof sheetUrl !== "string") {
+      sendJson(res, 400, { ok: false, error: "sheetUrl is required" });
+      return true;
+    }
+
+    const result = await updateSubjectStatus(sheetUrl, body, await getSheetAuth(req));
+    sendJson(res, 200, { ok: true, ...result });
+    return true;
+  }
+
   if (url.pathname === "/api/smart-suggest" && req.method === "POST") {
     const body = await readRequestJson(req);
     const sheetUrl = body.sheetUrl;
@@ -1968,16 +2116,22 @@ async function handleApi(req, res, url) {
     }
 
     const index = await readJson(indexPath, { files: [] });
-    const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+    const terms = expandSmartTerms(query);
     const results = (index.files || [])
       .map(file => {
-        const haystack = `${file.name} ${file.relativePath}`.toLowerCase();
-        const matchedTerms = terms.filter(term => haystack.includes(term));
+        const haystack = `${file.name} ${file.relativePath}`;
+        const matchedTerms = matchedSearchTerms(haystack, terms);
         if (!matchedTerms.length) return null;
+        const titleHits = matchedTerms.filter(term => {
+          const normalizedTerm = normalizeSearchText(term);
+          return normalizedTerm.length >= 3 && normalizeSearchText(file.name).includes(normalizedTerm);
+        }).length;
+        const yearHits = matchedTerms.filter(term => /^(25|26)\d{2}$/.test(normalizeSearchText(term))).length;
+        const score = Math.min(100, Math.round((matchedTerms.length / Math.max(terms.length, 1)) * 70) + Math.min(24, titleHits * 6) + Math.min(10, yearHits * 10));
         return {
           ...file,
           matchedTerms,
-          score: Math.round((matchedTerms.length / terms.length) * 100)
+          score
         };
       })
       .filter(Boolean)
