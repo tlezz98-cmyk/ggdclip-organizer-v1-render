@@ -5669,7 +5669,57 @@
       setStatus(`สถานะ: ค้นตำแหน่งจากวิชาพบ ${result.count || 0} วิชาหลัก`);
     }
 
+    const tabParamToView = {
+      dashboard: "dashboard",
+      organizer: "organizer",
+      "subject-map": "subjectMap",
+      subjectMap: "subjectMap",
+      library: "library",
+      documents: "documents",
+      trial: "trial",
+      reports: "reports",
+      settings: "settings"
+    };
+    const viewToTabParam = {
+      dashboard: "dashboard",
+      organizer: "organizer",
+      subjectMap: "subject-map",
+      library: "library",
+      documents: "documents",
+      trial: "trial",
+      reports: "reports",
+      settings: "settings"
+    };
+
+    function normalizeViewName(view) {
+      return tabParamToView[String(view || "").trim()] || "dashboard";
+    }
+
+    function viewFromCurrentUrl() {
+      const params = new URLSearchParams(window.location.search);
+      return normalizeViewName(params.get("tab"));
+    }
+
+    function updateTabUrl(view, replace = false) {
+      const tab = viewToTabParam[normalizeViewName(view)] || "dashboard";
+      const url = new URL(window.location.href);
+      url.searchParams.set("tab", tab);
+      const next = `${url.pathname}${url.search}${url.hash}`;
+      if (replace) {
+        window.history.replaceState({ view: normalizeViewName(view) }, "", next);
+      } else {
+        window.history.pushState({ view: normalizeViewName(view) }, "", next);
+      }
+    }
+
+    function navigateToView(view, replace = false) {
+      const normalized = normalizeViewName(view);
+      setActiveView(normalized);
+      updateTabUrl(normalized, replace);
+    }
+
     function setActiveView(view) {
+      view = normalizeViewName(view);
       document.getElementById("organizerView").classList.toggle("hidden", view !== "organizer");
       document.getElementById("subjectMapView").classList.toggle("hidden", view !== "subjectMap");
       document.getElementById("libraryView").classList.toggle("hidden", view !== "library");
@@ -6777,7 +6827,7 @@
       if (!event.target.closest(".smart-search-box")) closeSmartSuggestions();
     });
     document.querySelectorAll(".view-tab").forEach(button => {
-      button.addEventListener("click", () => setActiveView(button.dataset.view));
+      button.addEventListener("click", () => navigateToView(button.dataset.view));
     });
     document.getElementById("smartSearchRunButton").addEventListener("click", () => {
       closeSmartSuggestions();
@@ -7021,12 +7071,15 @@
     document.addEventListener("keydown", event => {
       if (event.key === "Escape") closeModal();
     });
+    window.addEventListener("popstate", () => {
+      setActiveView(viewFromCurrentUrl());
+    });
     (async function bootApp() {
       await loadConfig();
       applyOnlineMode();
       await loadAuthStatus();
       if (isAuthLocked()) return;
-      setActiveView("dashboard");
+      navigateToView(viewFromCurrentUrl(), true);
       await loadExistingIndex();
       renderRows();
       updateSummary();
