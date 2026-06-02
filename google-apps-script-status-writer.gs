@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Clip Organizer - Google Apps Script status writer
  *
  * วิธีใช้แบบย่อ:
@@ -143,6 +143,7 @@ function updateSubjectStatus(payload) {
   sheet.getRange(match.rowNumber, targetColumnIndex + 1).setValue(nextStatus);
   sheet.getRange(match.rowNumber, latestUpdateIndex + 1).setValue(updatedAt);
   sheet.getRange(match.rowNumber, latestUpdateItemIndex + 1).setValue(latestUpdateItem);
+  sheet.getRange(match.rowNumber, updateHistoryIndex + 1).setValue(updateHistory);
   SpreadsheetApp.flush();
 
   return {
@@ -156,7 +157,8 @@ function updateSubjectStatus(payload) {
     status: nextStatus,
     updatedAt,
     latestUpdateItem,
-    updatedCells: 3
+    updateHistory,
+    updatedCells: 4
   };
 }
 
@@ -192,6 +194,35 @@ function ensureColumn(sheet, header, names, defaultName) {
   sheet.getRange(1, nextColumn).setValue(defaultName);
   header.push(defaultName);
   return nextColumn - 1;
+}
+
+function parseUpdateHistoryEntries(value) {
+  const text = cleanCell(value);
+  if (!text) return [];
+  try {
+    const parsed = JSON.parse(text);
+    if (Array.isArray(parsed)) {
+      return parsed
+        .map(entry => ({
+          at: cleanCell(entry && entry.at),
+          type: cleanCell(entry && entry.type),
+          status: cleanCell(entry && entry.status),
+          title: cleanCell(entry && entry.title)
+        }))
+        .filter(entry => entry.at || entry.title || entry.status);
+    }
+  } catch (error) {}
+  return text.split(/\r?\n/)
+    .map(line => cleanCell(line))
+    .filter(Boolean)
+    .map(line => ({ at: '', type: '', status: '', title: line }));
+}
+
+function buildUpdateHistoryValue(existingValue, nextEntry) {
+  const entries = [nextEntry].concat(parseUpdateHistoryEntries(existingValue))
+    .filter(entry => entry && (entry.at || entry.title || entry.status))
+    .slice(0, 5);
+  return JSON.stringify(entries);
 }
 
 function cleanCell(value) {

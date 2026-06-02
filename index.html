@@ -1684,6 +1684,15 @@
       min-width: 0;
     }
 
+    .history-button {
+      min-height: 22px;
+      width: 28px;
+      padding: 0;
+      border-radius: 6px;
+      font-size: 12px;
+      line-height: 1;
+    }
+
     .bar-update-item {
       overflow: hidden;
       text-overflow: ellipsis;
@@ -4623,6 +4632,10 @@
         const tone = dashboardUpdateTone(days);
         const updateText = row.latestUpdate ? `ล่าสุด ${formatDateOnly(row.latestUpdate)}` : "ยังไม่มีข้อมูลล่าสุด";
         const itemText = row.latestUpdateItem || "ยังไม่มีรายการอัปเดต";
+        const historyCount = Array.isArray(row.updateHistory) ? row.updateHistory.length : 0;
+        const historyButton = historyCount
+          ? `<button type="button" class="icon history-button" data-action="show-update-history" data-position="${escapeHtml(row.label)}" title="ดูประวัติ ${historyCount} รายการ">⌕</button>`
+          : "";
         return `
           <div class="bar-row">
             <div class="bar-label" title="${escapeHtml(row.label)}">${renderGroupTextLink(row.label, row.url, { className: "text-link" })}</div>
@@ -4632,6 +4645,7 @@
               <div class="bar-update-line">
                 <span>${escapeHtml(updateText)}</span>
                 <span class="fresh-pill ${tone.klass}">${escapeHtml(tone.label)}</span>
+                ${historyButton}
               </div>
               <div class="bar-update-item" title="${escapeHtml(itemText)}">${escapeHtml(itemText)}</div>
             </div>
@@ -4692,6 +4706,34 @@
       }).join("") || `<div class="smart-empty">ยังไม่มีข้อมูลอัปเดตล่าสุด</div>`;
     }
 
+    function formatUpdateHistoryEntry(entry) {
+      const typeLabel = entry?.type === "document" ? "ลิงก์เอกสาร" : entry?.type === "clip" ? "ลิงก์คลิป" : "รายการ";
+      const dateText = entry?.at ? formatDateOnly(entry.at) : "-";
+      const statusText = entry?.status ? `: ${entry.status}` : "";
+      const titleText = entry?.title || "ไม่ระบุวิชา";
+      return { dateText, titleText, line: `${typeLabel}${statusText}` };
+    }
+
+    function openUpdateHistory(positionName) {
+      const position = (dashboardData?.positions || []).find(item => item.name === positionName);
+      const history = Array.isArray(position?.updateHistory) ? position.updateHistory.slice(0, 5) : [];
+      const body = history.length
+        ? `<div class="history-list">${history.map((entry, index) => {
+            const formatted = formatUpdateHistoryEntry(entry);
+            return `
+              <div class="latest-update-item">
+                <div class="latest-update-head">
+                  <span>${index + 1}. ${escapeHtml(formatted.dateText)}</span>
+                  <span class="badge">${escapeHtml(formatted.line)}</span>
+                </div>
+                <div class="subtext">${escapeHtml(formatted.titleText)}</div>
+              </div>
+            `;
+          }).join("")}</div>`
+        : `<div class="smart-empty">ยังไม่มีประวัติอัปเดตของกลุ่มนี้</div>`;
+      openResultModal(`ประวัติการอัปเดต: ${positionName || "-"}`, body);
+    }
+
     function renderDashboardCharts(rows) {
       const visibleRows = rows || [];
       const total = visibleRows.reduce((sum, position) => sum + toNumber(position.total), 0);
@@ -4707,7 +4749,8 @@
           value: toNumber(position.missing),
           display: `${toNumber(position.missing).toLocaleString("th-TH")} ค้าง`,
           latestUpdate: position.latestUpdate || "",
-          latestUpdateItem: position.latestUpdateItem || ""
+          latestUpdateItem: position.latestUpdateItem || "",
+          updateHistory: position.updateHistory || []
         }));
 
       const progressRows = [...visibleRows]
@@ -7429,6 +7472,11 @@
     document.getElementById("dashboardTodoCards").addEventListener("click", event => {
       const button = event.target.closest("[data-todo-filter]");
       if (button) applyTodoFilter(button.dataset.todoFilter);
+    });
+    document.getElementById("dashboardCharts").addEventListener("click", event => {
+      const historyButton = event.target.closest("[data-action='show-update-history']");
+      if (!historyButton) return;
+      openUpdateHistory(historyButton.dataset.position || "");
     });
     document.getElementById("reportsView").addEventListener("click", event => {
       const button = event.target.closest("[data-report-filter]");

@@ -804,6 +804,13 @@ const latestUpdateItemHeaders = [
   "วิชาที่อัพเดตล่าสุด"
 ];
 
+const updateHistoryHeaders = [
+  "ประวัติอัปเดต",
+  "ประวัติการอัปเดต",
+  "ประวัติอัพเดต",
+  "ประวัติการอัพเดต"
+];
+
 function findHeaderIndex(rows, names) {
   return rows.findIndex(row => names.every(name => row.map(cleanCell).includes(name)));
 }
@@ -826,6 +833,35 @@ function normalizeSubjectKey(value) {
 
 function normalizeGroupKey(value) {
   return String(value || "").toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function parseUpdateHistoryEntries(value) {
+  const text = cleanCell(value);
+  if (!text) return [];
+  try {
+    const parsed = JSON.parse(text);
+    if (Array.isArray(parsed)) {
+      return parsed
+        .map(entry => ({
+          at: cleanCell(entry?.at),
+          type: cleanCell(entry?.type),
+          status: cleanCell(entry?.status),
+          title: cleanCell(entry?.title)
+        }))
+        .filter(entry => entry.at || entry.title || entry.status);
+    }
+  } catch {}
+  return text.split(/\r?\n/)
+    .map(line => cleanCell(line))
+    .filter(Boolean)
+    .map(line => ({ at: "", type: "", status: "", title: line }));
+}
+
+function buildUpdateHistoryValue(existingValue, nextEntry) {
+  const entries = [nextEntry, ...parseUpdateHistoryEntries(existingValue)]
+    .filter(entry => entry && (entry.at || entry.title || entry.status))
+    .slice(0, 5);
+  return JSON.stringify(entries);
 }
 
 const csvCache = new Map();
@@ -974,6 +1010,7 @@ async function updateSubjectStatus(sheetUrl, payload, auth = null) {
   const documentStatusIndex = columnIndex(header, documentStatusHeaders);
   let latestUpdateIndex = columnIndex(header, latestUpdateHeaders);
   let latestUpdateItemIndex = columnIndex(header, latestUpdateItemHeaders);
+  let updateHistoryIndex = columnIndex(header, updateHistoryHeaders);
   const targetColumnIndex = statusType === "clip" ? statusIndex : documentStatusIndex;
   if (positionIndex < 0 || orderIndex < 0 || subjectIndex < 0) {
     throw new Error("ไม่พบคอลัมน์ตำแหน่ง/ลำดับ/ชื่อวิชาในชีต");
@@ -1014,9 +1051,16 @@ async function updateSubjectStatus(sheetUrl, payload, auth = null) {
     await updateGoogleSheetCell(spreadsheetId, sheetName, 1, latestUpdateItemIndex, "รายการอัปเดตล่าสุด", auth);
     header.push("รายการอัปเดตล่าสุด");
   }
+  if (updateHistoryIndex < 0) {
+    updateHistoryIndex = header.length;
+    await updateGoogleSheetCell(spreadsheetId, sheetName, 1, updateHistoryIndex, "ประวัติอัปเดต", auth);
+    header.push("ประวัติอัปเดต");
+  }
   const update = await updateGoogleSheetCell(spreadsheetId, sheetName, match.rowNumber, targetColumnIndex, nextStatus, auth);
   const updatedAt = new Date().toISOString();
   const latestUpdateItem = `${statusType === "clip" ? "ลิงก์คลิป" : "ลิงก์เอกสาร"}: ${nextStatus} · ${title}`;
+  const historyEntry = { at: updatedAt, type: statusType, status: nextStatus, title };
+  const updateHistory = buildUpdateHistoryValue(match.row[updateHistoryIndex], historyEntry);
   let updatedCells = update.updatedCells || 0;
   if (latestUpdateIndex >= 0) {
     const latestUpdateResult = await updateGoogleSheetCell(spreadsheetId, sheetName, match.rowNumber, latestUpdateIndex, updatedAt, auth);
@@ -1026,6 +1070,8 @@ async function updateSubjectStatus(sheetUrl, payload, auth = null) {
     const latestItemResult = await updateGoogleSheetCell(spreadsheetId, sheetName, match.rowNumber, latestUpdateItemIndex, latestUpdateItem, auth);
     updatedCells += latestItemResult.updatedCells || 0;
   }
+  const historyResult = await updateGoogleSheetCell(spreadsheetId, sheetName, match.rowNumber, updateHistoryIndex, updateHistory, auth);
+  updatedCells += historyResult.updatedCells || 0;
   return {
     spreadsheetId,
     gid: manualEntryGid,
@@ -1036,6 +1082,7 @@ async function updateSubjectStatus(sheetUrl, payload, auth = null) {
     status: nextStatus,
     updatedAt,
     latestUpdateItem,
+    updateHistory,
     ...update,
     updatedCells
   };
@@ -1110,6 +1157,7 @@ async function loadManualRows(spreadsheetId, auth = null) {
   const clipStatusIndex = columnIndex(header, ["ลงคลิป"]);
   const latestUpdateIndex = columnIndex(header, latestUpdateHeaders);
   const latestUpdateItemIndex = columnIndex(header, latestUpdateItemHeaders);
+  const updateHistoryIndex = columnIndex(header, updateHistoryHeaders);
 
   if (positionIndex < 0 || subjectIndex < 0) {
     throw new Error("ไม่พบคอลัมน์ตำแหน่งหรือชื่อวิชา/หัวข้อในชีต");
@@ -1130,7 +1178,8 @@ async function loadManualRows(spreadsheetId, auth = null) {
       note: cleanCell(row[noteIndex]),
       clipStatus: cleanCell(row[clipStatusIndex]),
       latestUpdate: cleanCell(row[latestUpdateIndex]),
-      latestUpdateItem: cleanCell(row[latestUpdateItemIndex])
+      latestUpdateItem: cleanCell(row[latestUpdateItemIndex]),
+      updateHistory: cleanCell(row[updateHistoryIndex])
     }));
 }
 
@@ -1150,15 +1199,32 @@ function buildLatestUpdateMap(manualRows) {
   const byPosition = new Map();
   for (const row of manualRows) {
     const updatedAt = cleanCell(row.latestUpdate);
-    if (!row.position || !updatedAt) continue;
-    const timestamp = Date.parse(updatedAt);
-    if (!Number.isFinite(timestamp)) continue;
-    const existing = byPosition.get(row.position);
-    if (existing && existing.timestamp >= timestamp) continue;
-    byPosition.set(row.position, {
-      updatedAt,
-      timestamp,
-      item: cleanCell(row.latestUpdateItem) || row.title || ""
+    const history = parseUpdateHistoryEntries(row.updateHistory);
+    if (updatedAt) {
+      history.unshift({
+        at: updatedAt,
+        type: "",
+        status: "",
+        title: cleanCell(row.latestUpdateItem) || row.title || ""
+      });
+    }
+    if (!row.position || !history.length) continue;
+    const existing = byPosition.get(row.position) || { history: [] };
+    existing.history.push(...history);
+    byPosition.set(row.position, existing);
+  }
+  for (const [position, value] of byPosition.entries()) {
+    const history = value.history
+      .map(entry => ({ ...entry, timestamp: Date.parse(entry.at || "") }))
+      .filter(entry => Number.isFinite(entry.timestamp) || entry.title || entry.status)
+      .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+      .slice(0, 5);
+    const latest = history[0] || {};
+    byPosition.set(position, {
+      updatedAt: latest.at || "",
+      timestamp: latest.timestamp || 0,
+      item: latest.title || "",
+      history
     });
   }
   return byPosition;
@@ -1209,6 +1275,7 @@ async function loadDashboard(sheetUrl, auth = null) {
         facebookUrl,
         latestUpdate: latestUpdate.updatedAt || "",
         latestUpdateItem: latestUpdate.item || "",
+        updateHistory: latestUpdate.history || [],
         closedCourse: cleanCell(row[closedCourseIndex]) || "FALSE"
       };
     })
