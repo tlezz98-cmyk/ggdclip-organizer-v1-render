@@ -3716,8 +3716,9 @@
       const raw = formatLinkStatus(item);
       const kind = getLinkStatusKind(item);
       const klass = kind === "done" || kind === "pending" ? kind : "";
+      const disabled = isSubjectStatusSaving(item, "clip") ? "disabled" : "";
       return `
-        <select class="status-select ${klass}" data-action="change-subject-status" data-status-type="clip" data-subject-key="${escapeHtml(subjectClientKey(item))}" title="เปลี่ยนสถานะลิงก์คลิป">
+        <select class="status-select ${klass}" ${disabled} data-action="change-subject-status" data-status-type="clip" data-subject-key="${escapeHtml(subjectClientKey(item))}" title="เปลี่ยนสถานะลิงก์คลิป">
           <option value="ยังไม่ลงลิงก์" ${raw === "ยังไม่ลงลิงก์" ? "selected" : ""}>ยังไม่ลงลิงก์</option>
           <option value="ลงลิงก์แล้ว" ${raw === "ลงลิงก์แล้ว" ? "selected" : ""}>ลงลิงก์แล้ว</option>
         </select>
@@ -3728,8 +3729,9 @@
       const raw = formatSheetDocumentStatus(item);
       const kind = getSheetDocumentStatusKind(item);
       const klass = kind === "done" || kind === "pending" ? kind : "";
+      const disabled = isSubjectStatusSaving(item, "document") ? "disabled" : "";
       return `
-        <select class="status-select ${klass}" data-action="change-subject-status" data-status-type="document" data-subject-key="${escapeHtml(subjectClientKey(item))}" title="เปลี่ยนสถานะเอกสาร">
+        <select class="status-select ${klass}" ${disabled} data-action="change-subject-status" data-status-type="document" data-subject-key="${escapeHtml(subjectClientKey(item))}" title="เปลี่ยนสถานะเอกสาร">
           <option value="ยังไม่ลงลิงก์" ${raw === "ยังไม่ลงลิงก์" ? "selected" : ""}>ยังไม่ลงลิงก์</option>
           <option value="ลงลิงก์แล้ว" ${raw === "ลงลิงก์แล้ว" ? "selected" : ""}>ลงลิงก์แล้ว</option>
         </select>
@@ -3816,6 +3818,15 @@
 
     let lastStatusUndo = null;
     let statusToastTimer = null;
+    const statusSaveInFlight = new Set();
+
+    function subjectStatusRequestKey(item, statusType) {
+      return `${subjectClientKey(item)}||${statusType}`;
+    }
+
+    function isSubjectStatusSaving(item, statusType) {
+      return statusSaveInFlight.has(subjectStatusRequestKey(item, statusType));
+    }
 
     function showStatusUndoToast(message, undoAction) {
       const toast = document.getElementById("statusToast");
@@ -3885,6 +3896,12 @@
       const previousStatus = canonicalTwoStateStatus(currentKind);
       const nextStatus = control.value;
       if (nextStatus === previousStatus) return;
+      const saveKey = subjectStatusRequestKey(item, statusType);
+      if (statusSaveInFlight.has(saveKey)) {
+        control.value = previousStatus;
+        return;
+      }
+      statusSaveInFlight.add(saveKey);
       control.disabled = true;
       applySubjectStatusLocally(item, statusType, nextStatus);
       renderRows();
@@ -3916,6 +3933,9 @@
         renderRows();
         updateSummary();
         setStatus(`สถานะ: บันทึกไม่สำเร็จ - ${error.message}`);
+      } finally {
+        statusSaveInFlight.delete(saveKey);
+        renderRows();
       }
     }
 

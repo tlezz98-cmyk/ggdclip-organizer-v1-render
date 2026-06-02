@@ -256,10 +256,25 @@ function parseUpdateHistoryEntries(value) {
 }
 
 function buildUpdateHistoryValue(existingValue, nextEntry) {
-  const entries = [nextEntry].concat(parseUpdateHistoryEntries(existingValue))
-    .filter(entry => entry && (entry.at || entry.title || entry.status))
-    .slice(0, 5);
-  return JSON.stringify(entries);
+  const existingEntries = parseUpdateHistoryEntries(existingValue)
+    .filter(entry => entry && (entry.at || entry.title || entry.status));
+  const entries = isDuplicateHistoryEntry(nextEntry, existingEntries[0])
+    ? existingEntries
+    : [nextEntry].concat(existingEntries);
+  return JSON.stringify(entries.slice(0, 5));
+}
+
+function isDuplicateHistoryEntry(a, b) {
+  if (!a || !b) return false;
+  const sameCore =
+    cleanCell(a.type) === cleanCell(b.type) &&
+    cleanCell(a.status) === cleanCell(b.status) &&
+    normalizeKey(a.title) === normalizeKey(b.title);
+  if (!sameCore) return false;
+  const firstTime = Date.parse(a.at || "");
+  const secondTime = Date.parse(b.at || "");
+  if (!isFinite(firstTime) || !isFinite(secondTime)) return true;
+  return Math.abs(firstTime - secondTime) <= 15000;
 }
 
 function jsonOutput(data) {
