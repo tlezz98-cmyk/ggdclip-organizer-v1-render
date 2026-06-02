@@ -766,6 +766,9 @@ function cleanCell(value) {
 
 function repairMojibakeText(value) {
   const text = cleanCell(value);
+  if (/[\uFFFD\x00-\x08\x0B\x0C\x0E-\x1F]/.test(text)) {
+    return "Apps Script writer ยังเป็นเวอร์ชันเก่าหรือ encoding เพี้ยน กรุณาอัปเดต Apps Script แล้ว Deploy ใหม่";
+  }
   if (!text || !text.includes("à")) return text;
   try {
     return Buffer.from(text, "latin1").toString("utf8");
@@ -1135,7 +1138,8 @@ async function updateSubjectStatusViaAppsScript(sheetUrl, payload, writer) {
     throw new Error(`Apps Script did not return JSON (${response.status})`);
   }
   if (!response.ok || json.ok === false) {
-    throw new Error(repairMojibakeText(json.error) || `Apps Script write failed (${response.status})`);
+    const errorMessage = repairMojibakeText(json.error);
+    throw new Error(errorMessage || `Apps Script write failed (${response.status})`);
   }
   csvCache.clear();
   return {
