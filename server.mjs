@@ -764,6 +764,25 @@ function cleanCell(value) {
   return String(value || "").replace(/^\uFEFF/u, "").trim();
 }
 
+function repairMojibakeText(value) {
+  const text = cleanCell(value);
+  if (!text || !text.includes("à")) return text;
+  try {
+    return Buffer.from(text, "latin1").toString("utf8");
+  } catch {
+    return text;
+  }
+}
+
+function canonicalTwoStateStatus(value) {
+  const raw = cleanCell(value);
+  const repaired = repairMojibakeText(raw);
+  const normalized = `${raw} ${repaired}`.toLowerCase().replace(/\s+/g, "");
+  if (normalized.includes("ยังไม่") || normalized.includes("ไม่ลง") || normalized.includes("pending")) return "ยังไม่ลงลิงก์";
+  if (normalized.includes("ลงลิงก์แล้ว") || normalized.includes("ลงลิงค์แล้ว") || normalized.includes("ลงแล้ว") || normalized.includes("done") || normalized.includes("complete")) return "ลงลิงก์แล้ว";
+  return raw;
+}
+
 function columnIndex(header, names) {
   const cleanHeader = header.map(cleanCell);
   for (const name of names) {
@@ -1090,14 +1109,16 @@ async function updateSubjectStatus(sheetUrl, payload, auth = null) {
 
 async function updateSubjectStatusViaAppsScript(sheetUrl, payload, writer) {
   if (!writer?.url) throw new Error("Apps Script status writer is not configured");
+  const forwardedPayload = {
+    ...payload,
+    status: canonicalTwoStateStatus(payload.status),
+    sheetUrl,
+    secret: writer.secret || ""
+  };
   const response = await fetch(writer.url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      ...payload,
-      sheetUrl,
-      secret: writer.secret || ""
-    })
+    body: JSON.stringify(forwardedPayload)
   });
   const text = await response.text();
   let json = {};
@@ -1107,7 +1128,7 @@ async function updateSubjectStatusViaAppsScript(sheetUrl, payload, writer) {
     throw new Error(`Apps Script did not return JSON (${response.status})`);
   }
   if (!response.ok || json.ok === false) {
-    throw new Error(json.error || `Apps Script write failed (${response.status})`);
+    throw new Error(repairMojibakeText(json.error) || `Apps Script write failed (${response.status})`);
   }
   csvCache.clear();
   return {

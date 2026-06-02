@@ -1,55 +1,27 @@
-/**
- * Clip Organizer - Google Apps Script status writer
- *
- * วิธีใช้แบบย่อ:
- * 1) เปิด Google Sheet > Extensions > Apps Script
- * 2) วางโค้ดนี้ทั้งหมดใน Code.gs แล้วกด Save
- * 3) ไปที่ Project Settings > Script properties แล้วเพิ่ม
- *    ชื่อ: STATUS_WRITER_SECRET
- *    ค่า: ใส่รหัสลับอะไรก็ได้ เช่น clip-2026
- * 4) Deploy > New deployment > Web app
- *    Execute as: Me
- *    Who has access: Anyone
- * 5) Copy Web app URL ไปใส่ใน config.json ของแอพ
- */
-
-const DEFAULT_MANUAL_ENTRY_GID = '2021660849';
 const SECRET_PROPERTY_NAME = 'STATUS_WRITER_SECRET';
+const DEFAULT_MANUAL_ENTRY_GID = '2021660849';
 
+const POSITION_HEADERS = ['???????'];
+const ORDER_HEADERS = ['?????'];
+const SUBJECT_HEADERS = ['????????/??????', '?????????????', '????', '??????'];
 const CLIP_STATUS_HEADERS = [
-  'สถานะลิงก์คลิป',
-  'สถานะลิงค์คลิป',
-  'สถานะลงก์คลิป',
-  'สถานะลงค์คลิป',
-  'สถานะคลิป',
-  'สถานะ'
+  '??????????????',
+  '??????????????',
+  '?????????????',
+  '?????????????',
+  '?????????',
+  '?????'
 ];
-
 const DOCUMENT_STATUS_HEADERS = [
-  'สถานะลิงก์เอกสาร',
-  'สถานะลิงค์เอกสาร',
-  'สถานะเอกสาร',
-  'ลิงก์เอกสาร',
-  'ลิงค์เอกสาร'
+  '????????????????',
+  '????????????????',
+  '???????????',
+  '???????????',
+  '???????????'
 ];
-
-const LATEST_UPDATE_HEADERS = [
-  'อัปเดตล่าสุด',
-  'อัพเดตล่าสุด',
-  'แก้ไขล่าสุด',
-  'ล่าสุด'
-];
-
-const LATEST_UPDATE_ITEM_HEADERS = [
-  'รายการอัปเดตล่าสุด',
-  'รายการอัพเดตล่าสุด',
-  'วิชาที่อัปเดตล่าสุด',
-  'วิชาที่อัพเดตล่าสุด'
-];
-
-function doGet() {
-  return jsonOutput({ ok: true, message: 'Clip Organizer status writer is ready' });
-}
+const LATEST_UPDATE_HEADERS = ['????????????', '????????????', '???????????'];
+const LATEST_UPDATE_ITEM_HEADERS = ['??????????????????', '??????????????????', '???????????????????'];
+const UPDATE_HISTORY_HEADERS = ['?????????????', '????????????????', '?????????????', '????????????????'];
 
 function doPost(e) {
   try {
@@ -70,76 +42,81 @@ function parseBody(e) {
 function verifySecret(secret) {
   const expected = PropertiesService.getScriptProperties().getProperty(SECRET_PROPERTY_NAME) || '';
   if (expected && String(secret || '') !== expected) {
-    throw new Error('secret ไม่ถูกต้อง');
+    throw new Error('secret ??????????');
   }
 }
 
 function updateSubjectStatus(payload) {
   const spreadsheetId = extractSpreadsheetId(payload.sheetUrl || '');
-  if (!spreadsheetId) throw new Error('ไม่พบ spreadsheet id');
+  if (!spreadsheetId) throw new Error('????? spreadsheet id');
 
   const statusType = cleanCell(payload.statusType || '');
-  const nextStatus = cleanCell(payload.status || '');
+  const nextStatus = canonicalStatus(payload.status || '');
   if (statusType !== 'clip' && statusType !== 'document') {
-    throw new Error('ประเภทสถานะไม่ถูกต้อง');
+    throw new Error('?????????????????????');
   }
-  if (nextStatus !== 'ยังไม่ลงลิงก์' && nextStatus !== 'ลงลิงก์แล้ว') {
-    throw new Error('สถานะต้องเป็น ยังไม่ลงลิงก์ หรือ ลงลิงก์แล้ว เท่านั้น');
+  if (!nextStatus) {
+    throw new Error('????????????? ????????????? ???? ??????????? ????????');
   }
 
   const position = cleanCell(payload.position || '');
   const order = cleanCell(payload.order || '');
   const title = cleanCell(payload.title || '');
   if (!position || !order || !title) {
-    throw new Error('ข้อมูลตำแหน่ง/ลำดับ/ชื่อวิชาไม่ครบ');
+    throw new Error('?????????????/?????/??????????????');
   }
 
   const ss = SpreadsheetApp.openById(spreadsheetId);
   const sheet = sheetByGid(ss, payload.gid || DEFAULT_MANUAL_ENTRY_GID);
-  if (!sheet) throw new Error('ไม่พบแท็บชีต gid ' + (payload.gid || DEFAULT_MANUAL_ENTRY_GID));
+  if (!sheet) throw new Error('??????????????????????');
 
   const values = sheet.getDataRange().getValues();
-  if (!values.length) throw new Error('ชีตไม่มีข้อมูล');
-  const header = values[0].map(cleanCell);
-
-  const positionIndex = columnIndex(header, ['ตำแหน่ง']);
-  const orderIndex = columnIndex(header, ['ลำดับ']);
-  const subjectIndex = columnIndex(header, ['ชื่อวิชา/หัวข้อ']);
+  const header = (values[0] || []).map(cleanCell);
+  const positionIndex = columnIndex(header, POSITION_HEADERS);
+  const orderIndex = columnIndex(header, ORDER_HEADERS);
+  const subjectIndex = columnIndex(header, SUBJECT_HEADERS);
   const clipStatusIndex = columnIndex(header, CLIP_STATUS_HEADERS);
   const documentStatusIndex = columnIndex(header, DOCUMENT_STATUS_HEADERS);
-  const latestUpdateIndex = ensureColumn(sheet, header, LATEST_UPDATE_HEADERS, 'อัปเดตล่าสุด');
-  const latestUpdateItemIndex = ensureColumn(sheet, header, LATEST_UPDATE_ITEM_HEADERS, 'รายการอัปเดตล่าสุด');
-  const targetColumnIndex = statusType === 'clip' ? clipStatusIndex : documentStatusIndex;
+  const latestUpdateIndex = ensureColumn(sheet, header, LATEST_UPDATE_HEADERS, '????????????');
+  const latestUpdateItemIndex = ensureColumn(sheet, header, LATEST_UPDATE_ITEM_HEADERS, '??????????????????');
+  const updateHistoryIndex = ensureColumn(sheet, header, UPDATE_HISTORY_HEADERS, '?????????????');
 
   if (positionIndex < 0 || orderIndex < 0 || subjectIndex < 0) {
-    throw new Error('ไม่พบคอลัมน์ ตำแหน่ง/ลำดับ/ชื่อวิชา ในชีต');
+    throw new Error('???????????????????/?????/?????????????');
   }
+
+  const targetColumnIndex = statusType === 'clip' ? clipStatusIndex : documentStatusIndex;
   if (targetColumnIndex < 0) {
     throw new Error(statusType === 'clip'
-      ? 'ไม่พบคอลัมน์สถานะลิงก์คลิปในชีต'
-      : 'ไม่พบคอลัมน์สถานะเอกสารในชีต');
+      ? '???????????????????????????????'
+      : '????????????????????????????');
   }
 
   const matches = [];
-  for (let i = 1; i < values.length; i += 1) {
-    const row = values[i];
-    if (sameSheetKey(row[positionIndex], position) &&
-        sameSheetKey(row[orderIndex], order) &&
-        sameSheetKey(row[subjectIndex], title)) {
-      matches.push({ row, rowNumber: i + 1 });
+  for (let i = 1; i < values.length; i++) {
+    const row = values[i] || [];
+    if (
+      sameSheetKey(row[positionIndex], position) &&
+      sameSheetKey(row[orderIndex], order) &&
+      sameSheetKey(row[subjectIndex], title)
+    ) {
+      matches.push({ rowNumber: i + 1, row });
     }
   }
 
   if (matches.length !== 1) {
     throw new Error(matches.length === 0
-      ? 'ไม่พบแถวที่ตรงกับตำแหน่ง/ลำดับ/ชื่อวิชานี้'
-      : 'พบหลายแถวที่ตรงกัน (' + matches.length + ' แถว) จึงยังไม่เขียนเพื่อกันผิดแถว');
+      ? '????????????????????????/?????/???????????'
+      : '?????????????????? (' + matches.length + ' ???) ????????????????????????????');
   }
 
   const match = matches[0];
   const previousStatus = cleanCell(match.row[targetColumnIndex]);
   const updatedAt = new Date().toISOString();
-  const latestUpdateItem = (statusType === 'clip' ? 'ลิงก์คลิป' : 'ลิงก์เอกสาร') + ': ' + nextStatus + ' · ' + title;
+  const latestUpdateItem = (statusType === 'clip' ? '?????????' : '???????????') + ': ' + nextStatus + ' ? ' + title;
+  const historyEntry = { at: updatedAt, type: statusType, status: nextStatus, title: title };
+  const updateHistory = buildUpdateHistoryValue(match.row[updateHistoryIndex], historyEntry);
+
   sheet.getRange(match.rowNumber, targetColumnIndex + 1).setValue(nextStatus);
   sheet.getRange(match.rowNumber, latestUpdateIndex + 1).setValue(updatedAt);
   sheet.getRange(match.rowNumber, latestUpdateItemIndex + 1).setValue(latestUpdateItem);
@@ -148,10 +125,8 @@ function updateSubjectStatus(payload) {
 
   return {
     spreadsheetId,
-    gid: String(sheet.getSheetId()),
     sheetName: sheet.getName(),
     rowNumber: match.rowNumber,
-    columnIndex: targetColumnIndex,
     statusType,
     previousStatus,
     status: nextStatus,
@@ -160,12 +135,6 @@ function updateSubjectStatus(payload) {
     updateHistory,
     updatedCells: 4
   };
-}
-
-function jsonOutput(data) {
-  return ContentService
-    .createTextOutput(JSON.stringify(data))
-    .setMimeType(ContentService.MimeType.JSON);
 }
 
 function extractSpreadsheetId(value) {
@@ -196,35 +165,6 @@ function ensureColumn(sheet, header, names, defaultName) {
   return nextColumn - 1;
 }
 
-function parseUpdateHistoryEntries(value) {
-  const text = cleanCell(value);
-  if (!text) return [];
-  try {
-    const parsed = JSON.parse(text);
-    if (Array.isArray(parsed)) {
-      return parsed
-        .map(entry => ({
-          at: cleanCell(entry && entry.at),
-          type: cleanCell(entry && entry.type),
-          status: cleanCell(entry && entry.status),
-          title: cleanCell(entry && entry.title)
-        }))
-        .filter(entry => entry.at || entry.title || entry.status);
-    }
-  } catch (error) {}
-  return text.split(/\r?\n/)
-    .map(line => cleanCell(line))
-    .filter(Boolean)
-    .map(line => ({ at: '', type: '', status: '', title: line }));
-}
-
-function buildUpdateHistoryValue(existingValue, nextEntry) {
-  const entries = [nextEntry].concat(parseUpdateHistoryEntries(existingValue))
-    .filter(entry => entry && (entry.at || entry.title || entry.status))
-    .slice(0, 5);
-  return JSON.stringify(entries);
-}
-
 function cleanCell(value) {
   return String(value == null ? '' : value).replace(/^\uFEFF/u, '').trim();
 }
@@ -234,8 +174,64 @@ function sameSheetKey(a, b) {
 }
 
 function normalizeKey(value) {
-  return cleanCell(value)
-    .replace(/[\u200B-\u200D\uFEFF]/g, '')
-    .replace(/\s+/g, ' ')
-    .toLowerCase();
+  return cleanCell(value).replace(/\s+/g, '').toLowerCase();
+}
+
+function canonicalStatus(value) {
+  const raw = cleanCell(value);
+  const fixed = repairMojibake(raw);
+  const normalized = (raw + ' ' + fixed).toLowerCase().replace(/\s+/g, '');
+  if (normalized.indexOf('??????') >= 0 || normalized.indexOf('?????') >= 0 || normalized.indexOf('pending') >= 0) {
+    return '?????????????';
+  }
+  if (normalized.indexOf('???????????') >= 0 || normalized.indexOf('???????????') >= 0 || normalized.indexOf('??????') >= 0 || normalized.indexOf('done') >= 0 || normalized.indexOf('complete') >= 0) {
+    return '???????????';
+  }
+  return '';
+}
+
+function repairMojibake(value) {
+  const text = cleanCell(value);
+  if (!text || text.indexOf('?') < 0) return text;
+  try {
+    const bytes = [];
+    for (let i = 0; i < text.length; i++) {
+      const code = text.charCodeAt(i);
+      if (code <= 255) bytes.push(code);
+    }
+    if (!bytes.length) return text;
+    return Utilities.newBlob(bytes).getDataAsString('UTF-8');
+  } catch (error) {
+    return text;
+  }
+}
+
+function parseUpdateHistoryEntries(value) {
+  const text = cleanCell(value);
+  if (!text) return [];
+  try {
+    const parsed = JSON.parse(text);
+    if (Array.isArray(parsed)) return parsed.filter(Boolean);
+  } catch (error) {}
+  return text.split(/\n+/).map(line => {
+    const parts = line.split(' | ');
+    return {
+      at: parts[0] || '',
+      status: parts[1] || '',
+      title: parts.slice(2).join(' | ') || line
+    };
+  }).filter(entry => entry.title || entry.status || entry.at);
+}
+
+function buildUpdateHistoryValue(existingValue, nextEntry) {
+  const entries = [nextEntry].concat(parseUpdateHistoryEntries(existingValue))
+    .filter(entry => entry && (entry.at || entry.title || entry.status))
+    .slice(0, 5);
+  return JSON.stringify(entries);
+}
+
+function jsonOutput(data) {
+  return ContentService
+    .createTextOutput(JSON.stringify(data))
+    .setMimeType(ContentService.MimeType.JSON);
 }
