@@ -2878,6 +2878,7 @@
     let collapsedSmartPositions = new Set();
     let collapsedSubjectMapCards = new Set();
     let dashboardData = null;
+    let dashboardNeedsReload = false;
     let dashboardSort = { key: "name", direction: "asc" };
     let documentLibraryData = null;
     let documentSort = { key: "name", direction: "asc" };
@@ -3841,6 +3842,11 @@
       if (item.sheet) item.sheet.documentStatus = status;
     }
 
+    function invalidateDashboardData() {
+      dashboardData = null;
+      dashboardNeedsReload = true;
+    }
+
     async function saveSubjectStatusToSheet(item, statusType, nextStatus) {
       const sheetUrl = document.getElementById("sheetUrl").value.trim();
       if (!sheetUrl) throw new Error("ยังไม่ได้ใส่ Google Sheet URL");
@@ -3878,6 +3884,7 @@
 
       try {
         await saveSubjectStatusToSheet(item, statusType, nextStatus);
+        invalidateDashboardData();
         setStatus(`สถานะ: บันทึก ${nextStatus} ลง Google Sheets แล้ว`);
         showStatusUndoToast(`เปลี่ยน${statusType === "clip" ? "สถานะลิงก์คลิป" : "สถานะเอกสาร"}เป็น ${nextStatus} แล้ว`, async () => {
           applySubjectStatusLocally(item, statusType, previousStatus);
@@ -3886,6 +3893,7 @@
           setStatus(`สถานะ: กำลังย้อนกลับเป็น ${previousStatus}`);
           try {
             await saveSubjectStatusToSheet(item, statusType, previousStatus);
+            invalidateDashboardData();
             setStatus(`สถานะ: ย้อนกลับเป็น ${previousStatus} แล้ว`);
           } catch (error) {
             applySubjectStatusLocally(item, statusType, nextStatus);
@@ -4840,6 +4848,7 @@
         const result = await response.json();
         if (!response.ok || !result.ok) throw new Error(result.error || "โหลด Dashboard ไม่สำเร็จ");
         dashboardData = result;
+        dashboardNeedsReload = false;
         renderDashboardSummary(result);
         renderDashboardRows();
         updateReportCounts();
@@ -6113,7 +6122,7 @@
           document.getElementById("subjectMapInput").value = current;
         }
       }
-      if (view === "dashboard" && !dashboardData) {
+      if (view === "dashboard" && (!dashboardData || dashboardNeedsReload)) {
         loadDashboardView({ auto: true }).catch(error => {
           document.getElementById("dashboardRows").innerHTML = `<tr><td colspan="7"><div class="warning">${escapeHtml(error.message)}</div></td></tr>`;
         });
