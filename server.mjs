@@ -764,8 +764,14 @@ function cleanCell(value) {
   return String(value || "").replace(/^\uFEFF/u, "").trim();
 }
 
+const STATUS_PENDING_LINK = "\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e25\u0e07\u0e25\u0e34\u0e07\u0e01\u0e4c";
+const STATUS_LINK_DONE = "\u0e25\u0e07\u0e25\u0e34\u0e07\u0e01\u0e4c\u0e41\u0e25\u0e49\u0e27";
+
 function repairMojibakeText(value) {
   const text = cleanCell(value);
+  if (/[\uFFFD\x00-\x08\x0B\x0C\x0E-\x1F]/.test(text)) {
+    return "Apps Script writer is outdated or has broken Thai encoding. Please update Apps Script and deploy again.";
+  }
   if (/[\uFFFD\x00-\x08\x0B\x0C\x0E-\x1F]/.test(text)) {
     return "Apps Script writer ยังเป็นเวอร์ชันเก่าหรือ encoding เพี้ยน กรุณาอัปเดต Apps Script แล้ว Deploy ใหม่";
   }
@@ -781,6 +787,10 @@ function canonicalTwoStateStatus(value) {
   const raw = cleanCell(value);
   const repaired = repairMojibakeText(raw);
   const normalized = `${raw} ${repaired}`.toLowerCase().replace(/\s+/g, "");
+  if (raw === STATUS_PENDING_LINK || repaired === STATUS_PENDING_LINK) return STATUS_PENDING_LINK;
+  if (raw === STATUS_LINK_DONE || repaired === STATUS_LINK_DONE) return STATUS_LINK_DONE;
+  if (normalized.includes("\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48") || normalized.includes("\u0e44\u0e21\u0e48\u0e25\u0e07")) return STATUS_PENDING_LINK;
+  if (normalized.includes("\u0e25\u0e07\u0e25\u0e34\u0e07\u0e01\u0e4c\u0e41\u0e25\u0e49\u0e27") || normalized.includes("\u0e25\u0e07\u0e25\u0e34\u0e07\u0e04\u0e4c\u0e41\u0e25\u0e49\u0e27") || normalized.includes("\u0e25\u0e07\u0e41\u0e25\u0e49\u0e27")) return STATUS_LINK_DONE;
   if (normalized.includes("ยังไม่") || normalized.includes("ไม่ลง") || normalized.includes("pending")) return "ยังไม่ลงลิงก์";
   if (normalized.includes("ลงลิงก์แล้ว") || normalized.includes("ลงลิงค์แล้ว") || normalized.includes("ลงแล้ว") || normalized.includes("done") || normalized.includes("complete")) return "ลงลิงก์แล้ว";
   return raw;
