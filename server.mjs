@@ -783,6 +783,13 @@ function canonicalTwoStateStatus(value) {
   return raw;
 }
 
+function stringifyAsciiJson(value) {
+  return JSON.stringify(value).replace(/[^\x00-\x7F]/g, char => {
+    const code = char.charCodeAt(0).toString(16).padStart(4, "0");
+    return `\\u${code}`;
+  });
+}
+
 function columnIndex(header, names) {
   const cleanHeader = header.map(cleanCell);
   for (const name of names) {
@@ -1118,7 +1125,7 @@ async function updateSubjectStatusViaAppsScript(sheetUrl, payload, writer) {
   const response = await fetch(writer.url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(forwardedPayload)
+    body: stringifyAsciiJson(forwardedPayload)
   });
   const text = await response.text();
   let json = {};
