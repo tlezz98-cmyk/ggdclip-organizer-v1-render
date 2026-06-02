@@ -1035,7 +1035,7 @@ async function updateSubjectStatus(sheetUrl, payload, auth = null) {
   const spreadsheetId = extractSpreadsheetId(sheetUrl);
   if (!spreadsheetId) throw new Error("ไม่พบ spreadsheet id");
   const statusType = String(payload.statusType || "").trim();
-  const nextStatus = cleanCell(payload.status);
+  const nextStatus = canonicalTwoStateStatus(payload.status);
   if (!["clip", "document"].includes(statusType)) throw new Error("ประเภทสถานะไม่ถูกต้อง");
   if (!["ยังไม่ลงลิงก์", "ลงลิงก์แล้ว"].includes(nextStatus)) throw new Error("สถานะต้องเป็น ยังไม่ลงลิงก์ หรือ ลงลิงก์แล้ว เท่านั้น");
 
@@ -2614,7 +2614,7 @@ createServer(async (req, res) => {
   } catch (error) {
     if ((req.url || "").startsWith("/api/") || (req.url || "").startsWith("/auth/")) {
       const statusCode = Number(error.statusCode || 500);
-      sendJson(res, statusCode, { ok: false, error: error.message || "Server error" });
+      sendJson(res, statusCode, { ok: false, error: repairMojibakeText(error.message) || "Server error" });
     } else {
       res.writeHead(404);
       res.end("Not found");
