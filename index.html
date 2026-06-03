@@ -1746,6 +1746,47 @@
       font-weight: 700;
     }
 
+    .closed-course-section {
+      margin: 0 16px 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      overflow: hidden;
+    }
+
+    .closed-course-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfcfe;
+    }
+
+    .closed-course-list {
+      display: grid;
+    }
+
+    .closed-course-item {
+      display: grid;
+      grid-template-columns: minmax(180px, 1fr) repeat(4, minmax(80px, auto));
+      gap: 10px;
+      align-items: center;
+      padding: 12px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .closed-course-item:last-child {
+      border-bottom: 0;
+    }
+
+    .closed-course-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 6px;
+    }
+
     .fresh-pill {
       display: inline-flex;
       align-items: center;
@@ -2176,6 +2217,21 @@
         grid-template-columns: minmax(0, 1fr);
       }
 
+      .closed-course-head {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .closed-course-item {
+        grid-template-columns: minmax(0, 1fr);
+        align-items: stretch;
+      }
+
+      .closed-course-actions {
+        justify-content: flex-start;
+        flex-wrap: wrap;
+      }
+
       .dashboard-row,
       .subject-map-card,
       .document-row,
@@ -2585,6 +2641,16 @@
             </tbody>
           </table>
         </div>
+        <div class="closed-course-section hidden" id="closedCourseSection">
+          <div class="closed-course-head">
+            <div>
+              <div class="panel-title">คอร์สที่ปิดแล้ว</div>
+              <div class="subtext">แยกออกจาก Dashboard หลัก เพื่อให้เห็นเฉพาะงานที่ยังต้องทำต่อ</div>
+            </div>
+            <span class="badge good" id="closedCourseCount">0 คอร์ส</span>
+          </div>
+          <div class="closed-course-list" id="closedCourseRows"></div>
+        </div>
       </section>
 
       <aside class="side-panel">
@@ -2888,6 +2954,7 @@
     let collapsedSubjectMapCards = new Set();
     let dashboardData = null;
     let dashboardNeedsReload = false;
+    let dashboardClosedRows = [];
     let dashboardSort = { key: "name", direction: "asc" };
     let documentLibraryData = null;
     let documentSort = { key: "name", direction: "asc" };
@@ -4851,6 +4918,80 @@
       });
     }
 
+    function isDashboardClosed(position) {
+      return String(position?.closedCourse || "").toLowerCase() === "true";
+    }
+
+    function dashboardGroupText(position) {
+      const label = String(position?.groupLabel || "").trim();
+      if (label && !isUrl(label)) return label;
+      return position?.name || "กลุ่ม Facebook";
+    }
+
+    function renderClosedCourseRows(rows) {
+      const section = document.getElementById("closedCourseSection");
+      const list = document.getElementById("closedCourseRows");
+      const count = document.getElementById("closedCourseCount");
+      dashboardClosedRows = rows || [];
+      if (!section || !list || !count) return;
+      if (!dashboardClosedRows.length) {
+        section.classList.add("hidden");
+        list.innerHTML = "";
+        count.textContent = "0 คอร์ส";
+        return;
+      }
+      section.classList.remove("hidden");
+      count.textContent = `${dashboardClosedRows.length.toLocaleString("th-TH")} คอร์ส`;
+      list.innerHTML = dashboardClosedRows.map((position, index) => {
+        const complete = clampPercent(position.percent) >= 100 && toNumber(position.missing) === 0;
+        const link = position.facebookUrl
+          ? `<a class="button-link" href="${escapeHtml(position.facebookUrl)}" target="_blank" rel="noopener">เปิดกลุ่ม</a>`
+          : `<span class="subtext">ไม่มี URL</span>`;
+        return `
+          <div class="closed-course-item">
+            <div>
+              <div class="result-name">${renderGroupTextLink(position.name, position.facebookUrl)}</div>
+              <div class="clip-meta">${escapeHtml(dashboardGroupText(position))}</div>
+            </div>
+            <div><strong>${escapeHtml(position.total || "0")}</strong><div class="clip-meta">วิชา</div></div>
+            <div><strong>${escapeHtml(position.done || "0")}</strong><div class="clip-meta">ลงแล้ว</div></div>
+            <div><span class="badge ${complete ? "good" : "warn"}">${complete ? "ครบ 100%" : "ปิดแล้วแต่ยังไม่ครบ"}</span></div>
+            <div class="closed-course-actions">
+              ${link}
+              <button class="button-link" data-closed-detail-index="${index}">ดูรายละเอียด</button>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    function openClosedCourseDetail(position) {
+      if (!position) return;
+      const complete = clampPercent(position.percent) >= 100 && toNumber(position.missing) === 0;
+      const link = position.facebookUrl
+        ? `<a class="button-link" href="${escapeHtml(position.facebookUrl)}" target="_blank" rel="noopener">เปิดกลุ่ม</a>`
+        : `<span class="subtext">ไม่มี URL กลุ่ม</span>`;
+      const body = `
+        <div class="scan-summary">
+          <div><strong>${renderGroupTextLink(position.name, position.facebookUrl)}</strong></div>
+          <div>ชื่อกลุ่ม: ${escapeHtml(dashboardGroupText(position))}</div>
+          <div>${link}</div>
+        </div>
+        <table class="dashboard-table" style="min-width:0; margin-top:12px;">
+          <tbody>
+            <tr><th>สถานะ</th><td>${complete ? `<span class="badge good">ปิดแล้วครบ 100%</span>` : `<span class="badge warn">ปิดแล้วแต่ยังไม่ครบ</span>`}</td></tr>
+            <tr><th>วิชาทั้งหมด</th><td>${escapeHtml(position.total || "0")}</td></tr>
+            <tr><th>ลงลิงก์แล้ว</th><td>${escapeHtml(position.done || "0")}</td></tr>
+            <tr><th>ยังไม่ลงลิงก์</th><td>${escapeHtml(position.missing || "0")}</td></tr>
+            <tr><th>% สำเร็จ</th><td>${escapeHtml(position.percent || "-")}</td></tr>
+            <tr><th>อัปเดตล่าสุด</th><td>${escapeHtml(position.latestUpdate ? formatDateTime(position.latestUpdate) : "ยังไม่มีข้อมูล")}</td></tr>
+            <tr><th>รายการล่าสุด</th><td>${escapeHtml(position.latestUpdateItem || "ยังไม่มีรายการอัปเดต")}</td></tr>
+          </tbody>
+        </table>
+      `;
+      openResultModal(`คอร์สที่ปิดแล้ว: ${position.name || "-"}`, body);
+    }
+
     function renderDashboardRows() {
       const rows = dashboardData?.positions || [];
       const query = document.getElementById("dashboardSearchInput").value.trim().toLowerCase();
@@ -4858,14 +4999,16 @@
         const haystack = `${position.name} ${position.groupLabel || ""} ${position.percent || ""}`.toLowerCase();
         return !query || haystack.includes(query);
       });
-      renderDashboardCharts(filtered);
-      renderDashboardTodos(filtered);
+      const activeRows = filtered.filter(position => !isDashboardClosed(position));
+      const closedRows = sortDashboardRows(filtered.filter(isDashboardClosed));
+      renderDashboardCharts(activeRows);
+      renderDashboardTodos(activeRows);
+      renderClosedCourseRows(closedRows);
       updateDashboardSortMarkers();
-      const sortedRows = sortDashboardRows(filtered);
+      const sortedRows = sortDashboardRows(activeRows);
 
       document.getElementById("dashboardRows").innerHTML = sortedRows.map(position => {
-        const closed = String(position.closedCourse || "").toLowerCase() === "true";
-        const groupText = position.groupLabel || position.facebookUrl || "-";
+        const groupText = dashboardGroupText(position);
         const link = position.facebookUrl
           ? `<a class="button-link" href="${escapeHtml(position.facebookUrl)}" target="_blank" rel="noopener">เปิดกลุ่ม</a>`
           : `<span class="subtext">ไม่มี URL</span>`;
@@ -4880,18 +5023,25 @@
               <div class="result-name">${renderGroupTextLink(groupText, position.facebookUrl)}</div>
               <div style="margin-top:6px;">${link}</div>
             </td>
-            <td>${closed ? `<span class="badge good">ปิดแล้ว</span>` : `<span class="badge">ยังเปิด</span>`}</td>
+            <td><span class="badge">ยังเปิด</span></td>
           </tr>
         `;
       }).join("") || `<tr><td colspan="7" class="subtext">ไม่พบตำแหน่งจากคำค้นนี้</td></tr>`;
     }
 
     function renderDashboardSummary(result) {
-      const totals = result?.totals || {};
+      const activeRows = (result?.positions || []).filter(position => !isDashboardClosed(position));
+      const totals = activeRows.reduce((summary, position) => {
+        summary.total += toNumber(position.total);
+        summary.done += toNumber(position.done);
+        summary.missing += toNumber(position.missing);
+        return summary;
+      }, { total: 0, done: 0, missing: 0 });
+      const percent = totals.total ? `${Math.round((totals.done / totals.total) * 100)}%` : "-";
       document.getElementById("dashboardSummary").innerHTML = `
-        <div class="metric"><div class="metric-value">${(result?.count || 0).toLocaleString("th-TH")}</div><div class="metric-label">ตำแหน่ง</div></div>
+        <div class="metric"><div class="metric-value">${activeRows.length.toLocaleString("th-TH")}</div><div class="metric-label">ตำแหน่งที่ยังเปิด</div></div>
         <div class="metric"><div class="metric-value">${(totals.total || 0).toLocaleString("th-TH")}</div><div class="metric-label">วิชาทั้งหมด</div></div>
-        <div class="metric"><div class="metric-value">${escapeHtml(totals.percent || "-")}</div><div class="metric-label">สำเร็จรวม</div></div>
+        <div class="metric"><div class="metric-value">${escapeHtml(percent)}</div><div class="metric-label">สำเร็จรวม</div></div>
       `;
     }
 
@@ -7340,6 +7490,12 @@
         dashboardSort = { key, direction: key === "name" || key === "group" ? "asc" : "desc" };
       }
       renderDashboardRows();
+    });
+    document.getElementById("closedCourseSection").addEventListener("click", event => {
+      const button = event.target.closest("[data-closed-detail-index]");
+      if (!button) return;
+      const index = Number(button.dataset.closedDetailIndex);
+      openClosedCourseDetail(dashboardClosedRows[index]);
     });
     document.getElementById("loadDocumentLibraryButton").addEventListener("click", () => loadDocumentLibraryView().catch(error => {
       document.getElementById("docLibraryRows").innerHTML = `<tr><td><div class="warning">${escapeHtml(error.message)}</div></td></tr>`;
