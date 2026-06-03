@@ -4924,7 +4924,7 @@
 
     function dashboardGroupText(position) {
       const label = String(position?.groupLabel || "").trim();
-      if (label && !isUrl(label)) return label;
+      if (label && !isHttpUrlClient(label)) return label;
       return position?.name || "กลุ่ม Facebook";
     }
 
