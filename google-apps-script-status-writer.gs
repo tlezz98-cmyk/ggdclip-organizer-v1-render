@@ -94,7 +94,8 @@ function updateSubjectStatus(payload) {
   const position = cleanCell(payload.position || "");
   const order = cleanCell(payload.order || "");
   const title = cleanCell(payload.title || "");
-  if (!position || !order || !title) {
+  const requestedRowNumber = Number(payload.rowNumber || 0);
+  if (!position || !title || (!order && !requestedRowNumber)) {
     throw new Error("Missing position/order/subject title");
   }
 
@@ -122,15 +123,26 @@ function updateSubjectStatus(payload) {
     throw new Error(statusType === "clip" ? "Missing clip status column" : "Missing document status column");
   }
 
-  const matches = [];
-  for (let i = 1; i < values.length; i++) {
-    const row = values[i] || [];
+  let matches = [];
+  if (requestedRowNumber >= 2 && requestedRowNumber <= values.length && Math.floor(requestedRowNumber) === requestedRowNumber) {
+    const row = values[requestedRowNumber - 1] || [];
     if (
       sameSheetKey(row[positionIndex], position) &&
-      sameSheetKey(row[orderIndex], order) &&
       sameSheetKey(row[subjectIndex], title)
     ) {
-      matches.push({ rowNumber: i + 1, row });
+      matches = [{ rowNumber: requestedRowNumber, row }];
+    }
+  }
+  if (!matches.length) {
+    for (let i = 1; i < values.length; i++) {
+      const row = values[i] || [];
+      if (
+        sameSheetKey(row[positionIndex], position) &&
+        sameSheetKey(row[orderIndex], order) &&
+        sameSheetKey(row[subjectIndex], title)
+      ) {
+        matches.push({ rowNumber: i + 1, row });
+      }
     }
   }
 

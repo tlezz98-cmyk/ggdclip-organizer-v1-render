@@ -1076,15 +1076,28 @@ async function updateSubjectStatus(sheetUrl, payload, auth = null) {
   const position = cleanCell(payload.position);
   const order = cleanCell(payload.order);
   const title = cleanCell(payload.title);
+  const requestedRowNumber = Number(payload.rowNumber || 0);
   if (!position || !order || !title) throw new Error("ข้อมูลตำแหน่ง/ลำดับ/ชื่อวิชาไม่ครบ");
 
-  const matches = rows.slice(1)
+  let matches = [];
+  if (Number.isInteger(requestedRowNumber) && requestedRowNumber >= 2 && requestedRowNumber <= rows.length) {
+    const row = rows[requestedRowNumber - 1] || [];
+    if (
+      sameSheetKey(row[positionIndex], position) &&
+      sameSheetKey(row[subjectIndex], title)
+    ) {
+      matches = [{ row, rowNumber: requestedRowNumber }];
+    }
+  }
+  if (!matches.length) {
+    matches = rows.slice(1)
     .map((row, index) => ({ row, rowNumber: index + 2 }))
     .filter(({ row }) =>
       sameSheetKey(row[positionIndex], position) &&
       sameSheetKey(row[orderIndex], order) &&
       sameSheetKey(row[subjectIndex], title)
     );
+  }
 
   if (matches.length !== 1) {
     throw new Error(matches.length === 0
@@ -1460,13 +1473,14 @@ async function loadSubjects(sheetUrl, positionName, auth = null) {
 
   const allPositions = positionName === "__ALL__";
   const subjects = rows.slice(1)
-    .filter(row => allPositions || (row[positionIndex] || "").trim() === positionName)
-    .filter(row => (row[subjectIndex] || "").trim())
-    .map((row, index) => ({
-      rowNumber: index + 2,
+    .map((row, index) => ({ row, rowNumber: index + 2 }))
+    .filter(({ row }) => allPositions || (row[positionIndex] || "").trim() === positionName)
+    .filter(({ row }) => (row[subjectIndex] || "").trim())
+    .map(({ row, rowNumber }) => ({
+      rowNumber,
       position: (row[positionIndex] || "").trim(),
       group: row[groupIndex] || "",
-      order: allPositions ? String(index + 1) : row[orderIndex] || String(index + 1),
+      order: row[orderIndex] || String(rowNumber - 1),
       title: (row[subjectIndex] || "").trim(),
       sheetStatus: row[statusIndex] || "",
       documentStatus: row[documentStatusIndex] || "",
