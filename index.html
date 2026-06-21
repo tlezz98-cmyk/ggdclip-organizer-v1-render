@@ -1559,12 +1559,6 @@
       padding: 0 16px 16px;
     }
 
-    #tasksView .dashboard-table-wrap {
-      max-height: calc(100vh - 360px);
-      min-height: 360px;
-      border-top: 1px solid var(--line);
-    }
-
     .dashboard-table {
       min-width: 860px;
     }
@@ -1576,7 +1570,7 @@
 
     .dashboard-charts {
       display: grid;
-      grid-template-columns: 240px minmax(0, 1fr);
+      grid-template-columns: 220px minmax(0, 1fr);
       gap: 10px;
       padding: 12px 16px 0;
     }
@@ -1634,7 +1628,7 @@
 
     .bar-row {
       display: grid;
-      grid-template-columns: minmax(150px, .7fr) minmax(120px, 1fr) auto;
+      grid-template-columns: minmax(150px, .7fr) minmax(120px, 1fr) auto minmax(210px, .65fr);
       gap: 8px;
       align-items: center;
     }
@@ -1674,6 +1668,38 @@
       text-align: right;
     }
 
+    .bar-update {
+      min-width: 0;
+      display: grid;
+      gap: 2px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .bar-update-line {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .history-button {
+      min-height: 22px;
+      width: 28px;
+      padding: 0;
+      border-radius: 6px;
+      font-size: 12px;
+      line-height: 1;
+    }
+
+    .bar-update-item {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      text-align: right;
+    }
+
     .dashboard-strip {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
@@ -1696,6 +1722,89 @@
       font-size: 12px;
       color: var(--muted);
     }
+
+    .latest-update-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .latest-update-item {
+      display: grid;
+      gap: 4px;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fbfcfe;
+    }
+
+    .latest-update-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .closed-course-section {
+      margin: 0 16px 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      overflow: hidden;
+    }
+
+    .closed-course-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfcfe;
+    }
+
+    .closed-course-list {
+      display: grid;
+    }
+
+    .closed-course-item {
+      display: grid;
+      grid-template-columns: minmax(180px, 1fr) repeat(4, minmax(80px, auto));
+      gap: 10px;
+      align-items: center;
+      padding: 12px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .closed-course-item:last-child {
+      border-bottom: 0;
+    }
+
+    .closed-course-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 6px;
+    }
+
+    .fresh-pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 22px;
+      padding: 3px 7px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+      border: 1px solid #d0d5dd;
+      background: #f2f4f7;
+      color: #667085;
+    }
+
+    .fresh-pill.good { background: var(--soft-green); border-color: #a9dec0; color: var(--green); }
+    .fresh-pill.warn { background: var(--soft-yellow); border-color: #f0c46b; color: var(--yellow); }
+    .fresh-pill.hot { background: #fff4e5; border-color: #f6b35b; color: #b45309; }
+    .fresh-pill.danger { background: var(--soft-red); border-color: #f8aaa4; color: var(--red); }
 
     th.sortable {
       cursor: pointer;
@@ -2023,15 +2132,6 @@
         gap: 12px;
       }
 
-      #tasksView .side-panel {
-        order: -1;
-      }
-
-      #tasksView .dashboard-table-wrap {
-        max-height: 520px;
-        min-height: 320px;
-      }
-
       .panel-head { align-items: flex-start; flex-direction: column; }
       .panel-title { white-space: normal; }
 
@@ -2117,6 +2217,21 @@
         grid-template-columns: minmax(0, 1fr);
       }
 
+      .closed-course-head {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .closed-course-item {
+        grid-template-columns: minmax(0, 1fr);
+        align-items: stretch;
+      }
+
+      .closed-course-actions {
+        justify-content: flex-start;
+        flex-wrap: wrap;
+      }
+
       .dashboard-row,
       .subject-map-card,
       .document-row,
@@ -2143,7 +2258,6 @@
       </div>
       <div class="app-view-tabs" role="tablist" aria-label="หน้าแอพ">
         <a class="view-tab active" href="?tab=dashboard" data-view="dashboard">Dashboard</a>
-        <a class="view-tab" href="?tab=tasks" data-view="tasks">ตามงาน</a>
         <a class="view-tab" href="?tab=organizer" data-view="organizer">จัดคลิปตามตำแหน่ง</a>
         <a class="view-tab" href="?tab=subject-map" data-view="subjectMap">ค้นตำแหน่งจากวิชา</a>
         <a class="view-tab" href="?tab=library" data-view="library">ค้นคลังทั้งหมด</a>
@@ -2488,114 +2602,6 @@
       </aside>
     </main>
 
-    <main class="workspace hidden" id="tasksView">
-      <section class="main-panel">
-        <div class="panel-head">
-          <div>
-            <div class="panel-title">ตามงานทั้งหมด</div>
-            <div class="subtext" id="taskMonitorSubtitle">รวมงานค้างจาก Dashboard, รายวิชา, audit ล่าสุด และดัชนีคลิป</div>
-          </div>
-          <div class="toolbar">
-            <input id="taskSearchInput" class="control search" placeholder="ค้นตำแหน่ง/วิชา/งาน">
-            <select id="taskTypeFilter" class="control filter-control" style="display:block;">
-              <option value="all">งานทั้งหมด</option>
-              <option value="clip-ready">มีคลิปแล้ว</option>
-              <option value="clip-missing">ยังไม่พบคลิป</option>
-              <option value="document-missing">เอกสารค้าง</option>
-              <option value="position-review">ตำแหน่งต้องตรวจ</option>
-            </select>
-            <button id="loadTaskMonitorButton" class="primary" type="button">เช็กงานทั้งหมด</button>
-            <button id="sendTelegramSummaryButton" type="button">ส่งเข้า Telegram</button>
-          </div>
-        </div>
-        <div class="smart-summary" id="taskMonitorSummary" style="padding:16px 16px 0;">
-          <div class="metric"><div class="metric-value">-</div><div class="metric-label">งานค้างคลิป</div></div>
-          <div class="metric"><div class="metric-value">-</div><div class="metric-label">มีคลิปรอตรวจ</div></div>
-          <div class="metric"><div class="metric-value">-</div><div class="metric-label">เอกสารค้าง</div></div>
-        </div>
-        <div class="work-queue" id="taskMonitorCards" aria-label="งานสำคัญ"></div>
-        <div class="dashboard-table-wrap">
-          <table class="dashboard-table">
-            <thead>
-              <tr>
-                <th style="width: 104px;">ระดับ</th>
-                <th style="width: 170px;">ประเภท</th>
-                <th style="width: 210px;">ตำแหน่ง</th>
-                <th>รายการ</th>
-                <th style="width: 160px;">สิ่งที่ต้องทำ</th>
-                <th style="width: 120px;">แหล่งข้อมูล</th>
-              </tr>
-            </thead>
-            <tbody id="taskMonitorRows">
-              <tr><td colspan="6" class="subtext">กดเช็กงานทั้งหมดเพื่อรวมข้อมูลล่าสุด</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <aside class="side-panel">
-        <div class="summary-block">
-          <div class="summary-title">Telegram กลุ่ม</div>
-          <div class="scan-summary" id="telegramStatusPanel">
-            <div><strong>ยังไม่ได้โหลดสถานะ Telegram</strong></div>
-          </div>
-        </div>
-        <div class="summary-block">
-          <div class="summary-title">ตั้งค่า Telegram</div>
-          <div class="mode-list">
-            <label class="checkline">
-              <input id="telegramEnabled" type="checkbox">
-              <span>เปิดใช้งาน Telegram</span>
-            </label>
-            <label class="checkline">
-              <input id="telegramNaturalLanguage" type="checkbox" checked>
-              <span>ตอบคำถามภาษาคนในกลุ่ม</span>
-            </label>
-            <label class="checkline">
-              <input id="telegramNotifyUpdates" type="checkbox">
-              <span>แจ้งเมื่อมีคนอัปเดตสถานะ</span>
-            </label>
-          </div>
-          <div class="field" style="margin-top:10px;">
-            <label for="telegramBotToken">Bot Token</label>
-            <input id="telegramBotToken" class="control" placeholder="จาก BotFather">
-          </div>
-          <div class="field" style="margin-top:10px;">
-            <label for="telegramChatId">Group Chat ID</label>
-            <input id="telegramChatId" class="control" placeholder="-100xxxxxxxxxx">
-          </div>
-          <div class="field" style="margin-top:10px;">
-            <label for="telegramPublicBaseUrl">ลิงก์แอพออนไลน์</label>
-            <input id="telegramPublicBaseUrl" class="control" placeholder="https://ggdclip-organizer-v1-render.onrender.com">
-          </div>
-          <div class="field" style="margin-top:10px;">
-            <label for="telegramDailyTime">เวลาสรุปรายวัน</label>
-            <input id="telegramDailyTime" class="control" placeholder="09:00">
-          </div>
-          <div class="actions" style="padding:12px 0 0;">
-            <button id="saveTelegramSettingsButton" class="primary" type="button">บันทึก Telegram</button>
-            <button id="testTelegramButton" type="button">ทดสอบส่งข้อความ</button>
-            <button id="setTelegramWebhookButton" type="button">เชื่อม webhook</button>
-          </div>
-        </div>
-        <div class="summary-block">
-          <div class="summary-title">ถามในกลุ่มได้</div>
-          <div class="scan-summary">
-            <div>สรุปงานค้าง</div>
-            <div>งานด่วนวันนี้</div>
-            <div>กกต การเงินเหลืออะไร</div>
-            <div>วิชาไหนมีคลิปแล้ว</div>
-          </div>
-        </div>
-        <div class="summary-block">
-          <div class="summary-title">แหล่งข้อมูล</div>
-          <div class="scan-summary" id="taskMonitorSources">
-            <div>ยังไม่ได้รวมข้อมูล</div>
-          </div>
-        </div>
-      </aside>
-    </main>
-
     <main class="workspace" id="dashboardView">
       <section class="main-panel">
         <div class="panel-head">
@@ -2634,6 +2640,16 @@
               <tr><td colspan="7" class="subtext">กดโหลด Dashboard เพื่ออ่านข้อมูลจากชีต</td></tr>
             </tbody>
           </table>
+        </div>
+        <div class="closed-course-section hidden" id="closedCourseSection">
+          <div class="closed-course-head">
+            <div>
+              <div class="panel-title">คอร์สที่ปิดแล้ว</div>
+              <div class="subtext">แยกออกจาก Dashboard หลัก เพื่อให้เห็นเฉพาะงานที่ยังต้องทำต่อ</div>
+            </div>
+            <span class="badge good" id="closedCourseCount">0 คอร์ส</span>
+          </div>
+          <div class="closed-course-list" id="closedCourseRows"></div>
         </div>
       </section>
 
@@ -2690,7 +2706,7 @@
           </div>
           <div class="doc-source-actions">
             <button id="loadDocumentLibraryButtonCompact" class="primary" type="button">โหลดสารบัญ</button>
-            <a class="button-link" href="https://docs.google.com/spreadsheets/d/13i914tujZ1aBlae2tIc5B09lz4Y_Yv7pDObkxgyhHY4/edit?gid=941630245#gid=941630245" target="_blank" rel="noopener">เปิดชีต</a>
+            <a class="button-link" href="https://docs.google.com/spreadsheets/d/13i914tujZ1aBlae2tIc5B09lz4Y_Yv7pDObkxgyhHY4/edit?gid=941630245#gid=941630245" target="_blank" rel="noopener">เปิดชีตคลังเอกสาร</a>
             <details class="doc-source-details">
               <summary>แก้ลิงก์ชีต</summary>
               <div class="doc-source-editor">
@@ -2926,18 +2942,7 @@
       destinationRoot: "",
       defaultMode: "hardlink",
       lastScan: "ยังไม่ได้สแกนจริง",
-      onlineMode: false,
-      telegram: {
-        enabled: false,
-        botToken: "",
-        chatId: "",
-        publicBaseUrl: "https://ggdclip-organizer-v1-render.onrender.com",
-        webhookSecret: "",
-        dailySummaryTime: "09:00",
-        timeZone: "Asia/Bangkok",
-        sendOnManualUpdate: false,
-        allowNaturalLanguage: true
-      }
+      onlineMode: false
     };
     let lastAuthStatus = null;
     let latestScan = null;
@@ -2948,6 +2953,8 @@
     let collapsedSmartPositions = new Set();
     let collapsedSubjectMapCards = new Set();
     let dashboardData = null;
+    let dashboardNeedsReload = false;
+    let dashboardClosedRows = [];
     let dashboardSort = { key: "name", direction: "asc" };
     let documentLibraryData = null;
     let documentSort = { key: "name", direction: "asc" };
@@ -2958,8 +2965,6 @@
     let subjectsLoadedFromSheet = false;
     let subjectMatchProfileCache = new WeakMap();
     let trialResults = [];
-    let taskMonitorData = null;
-    let taskMonitorFilter = "all";
 
     let subjects = [
       {
@@ -3541,8 +3546,8 @@
 
     function formatSheetDocumentStatus(item) {
       const kind = getSheetDocumentStatusKind(item);
-      if (kind === "done") return "ลงลิงก์เอกสารแล้ว";
-      return "ยังไม่ลงลิงก์เอกสาร";
+      if (kind === "done") return "ลงลิงก์แล้ว";
+      return "ยังไม่ลงลิงก์";
     }
 
     function getDocumentStatusKind(item) {
@@ -3778,8 +3783,9 @@
       const raw = formatLinkStatus(item);
       const kind = getLinkStatusKind(item);
       const klass = kind === "done" || kind === "pending" ? kind : "";
+      const disabled = isSubjectStatusSaving(item, "clip") ? "disabled" : "";
       return `
-        <select class="status-select ${klass}" data-action="change-subject-status" data-status-type="clip" data-subject-key="${escapeHtml(subjectClientKey(item))}" title="เปลี่ยนสถานะลิงก์คลิป">
+        <select class="status-select ${klass}" ${disabled} data-action="change-subject-status" data-status-type="clip" data-subject-key="${escapeHtml(subjectClientKey(item))}" title="เปลี่ยนสถานะลิงก์คลิป">
           <option value="ยังไม่ลงลิงก์" ${raw === "ยังไม่ลงลิงก์" ? "selected" : ""}>ยังไม่ลงลิงก์</option>
           <option value="ลงลิงก์แล้ว" ${raw === "ลงลิงก์แล้ว" ? "selected" : ""}>ลงลิงก์แล้ว</option>
         </select>
@@ -3790,8 +3796,9 @@
       const raw = formatSheetDocumentStatus(item);
       const kind = getSheetDocumentStatusKind(item);
       const klass = kind === "done" || kind === "pending" ? kind : "";
+      const disabled = isSubjectStatusSaving(item, "document") ? "disabled" : "";
       return `
-        <select class="status-select ${klass}" data-action="change-subject-status" data-status-type="document" data-subject-key="${escapeHtml(subjectClientKey(item))}" title="เปลี่ยนสถานะเอกสาร">
+        <select class="status-select ${klass}" ${disabled} data-action="change-subject-status" data-status-type="document" data-subject-key="${escapeHtml(subjectClientKey(item))}" title="เปลี่ยนสถานะเอกสาร">
           <option value="ยังไม่ลงลิงก์" ${raw === "ยังไม่ลงลิงก์" ? "selected" : ""}>ยังไม่ลงลิงก์</option>
           <option value="ลงลิงก์แล้ว" ${raw === "ลงลิงก์แล้ว" ? "selected" : ""}>ลงลิงก์แล้ว</option>
         </select>
@@ -3825,6 +3832,13 @@
       return new Intl.DateTimeFormat("th-TH", {
         dateStyle: "medium",
         timeStyle: "short"
+      }).format(new Date(iso));
+    }
+
+    function formatDateOnly(iso) {
+      if (!iso) return "-";
+      return new Intl.DateTimeFormat("th-TH", {
+        dateStyle: "medium"
       }).format(new Date(iso));
     }
 
@@ -3871,6 +3885,15 @@
 
     let lastStatusUndo = null;
     let statusToastTimer = null;
+    const statusSaveInFlight = new Set();
+
+    function subjectStatusRequestKey(item, statusType) {
+      return `${subjectClientKey(item)}||${statusType}`;
+    }
+
+    function isSubjectStatusSaving(item, statusType) {
+      return statusSaveInFlight.has(subjectStatusRequestKey(item, statusType));
+    }
 
     function showStatusUndoToast(message, undoAction) {
       const toast = document.getElementById("statusToast");
@@ -3906,6 +3929,11 @@
       if (item.sheet) item.sheet.documentStatus = status;
     }
 
+    function invalidateDashboardData() {
+      dashboardData = null;
+      dashboardNeedsReload = true;
+    }
+
     async function saveSubjectStatusToSheet(item, statusType, nextStatus) {
       const sheetUrl = document.getElementById("sheetUrl").value.trim();
       if (!sheetUrl) throw new Error("ยังไม่ได้ใส่ Google Sheet URL");
@@ -3913,6 +3941,7 @@
         sheetUrl,
         statusType,
         status: nextStatus,
+        rowNumber: item.sheet?.rowNumber || item.rowNumber || "",
         position: subjectPositionName(item),
         order: item.no || item.sheet?.order || "",
         title: item.title || ""
@@ -3935,6 +3964,12 @@
       const previousStatus = canonicalTwoStateStatus(currentKind);
       const nextStatus = control.value;
       if (nextStatus === previousStatus) return;
+      const saveKey = subjectStatusRequestKey(item, statusType);
+      if (statusSaveInFlight.has(saveKey)) {
+        control.value = previousStatus;
+        return;
+      }
+      statusSaveInFlight.add(saveKey);
       control.disabled = true;
       applySubjectStatusLocally(item, statusType, nextStatus);
       renderRows();
@@ -3943,6 +3978,7 @@
 
       try {
         await saveSubjectStatusToSheet(item, statusType, nextStatus);
+        invalidateDashboardData();
         setStatus(`สถานะ: บันทึก ${nextStatus} ลง Google Sheets แล้ว`);
         showStatusUndoToast(`เปลี่ยน${statusType === "clip" ? "สถานะลิงก์คลิป" : "สถานะเอกสาร"}เป็น ${nextStatus} แล้ว`, async () => {
           applySubjectStatusLocally(item, statusType, previousStatus);
@@ -3951,6 +3987,7 @@
           setStatus(`สถานะ: กำลังย้อนกลับเป็น ${previousStatus}`);
           try {
             await saveSubjectStatusToSheet(item, statusType, previousStatus);
+            invalidateDashboardData();
             setStatus(`สถานะ: ย้อนกลับเป็น ${previousStatus} แล้ว`);
           } catch (error) {
             applySubjectStatusLocally(item, statusType, nextStatus);
@@ -3964,6 +4001,9 @@
         renderRows();
         updateSummary();
         setStatus(`สถานะ: บันทึกไม่สำเร็จ - ${error.message}`);
+      } finally {
+        statusSaveInFlight.delete(saveKey);
+        renderRows();
       }
     }
 
@@ -4343,7 +4383,6 @@
             label.classList.toggle("active", label.querySelector("input").checked);
           });
         }
-        syncTelegramSettingsForm();
         setStatus("สถานะ: โหลด config แล้ว");
         updateSummary();
       } catch (error) {
@@ -4677,11 +4716,27 @@
       const maxValue = Math.max(1, ...rows.map(row => row.value));
       return rows.map(row => {
         const width = options.percent ? Math.max(2, Math.round(row.value)) : Math.max(2, Math.round((row.value / maxValue) * 100));
+        const days = dashboardUpdateAge(row.latestUpdate);
+        const tone = dashboardUpdateTone(days);
+        const updateText = row.latestUpdate ? `ล่าสุด ${formatDateOnly(row.latestUpdate)}` : "ยังไม่มีข้อมูลล่าสุด";
+        const itemText = row.latestUpdateItem || "ยังไม่มีรายการอัปเดต";
+        const historyCount = Array.isArray(row.updateHistory) ? row.updateHistory.length : 0;
+        const historyButton = historyCount
+          ? `<button type="button" class="icon history-button" data-action="show-update-history" data-position="${escapeHtml(row.label)}" title="ดูประวัติ ${historyCount} รายการ">⌕</button>`
+          : "";
         return `
           <div class="bar-row">
             <div class="bar-label" title="${escapeHtml(row.label)}">${renderGroupTextLink(row.label, row.url, { className: "text-link" })}</div>
             <div class="bar-track"><div class="bar-fill ${options.warn ? "warn" : ""} ${options.good ? "good" : ""}" style="width:${width}%"></div></div>
             <div class="bar-value">${escapeHtml(row.display)}</div>
+            <div class="bar-update">
+              <div class="bar-update-line">
+                <span>${escapeHtml(updateText)}</span>
+                <span class="fresh-pill ${tone.klass}">${escapeHtml(tone.label)}</span>
+                ${historyButton}
+              </div>
+              <div class="bar-update-item" title="${escapeHtml(itemText)}">${escapeHtml(itemText)}</div>
+            </div>
           </div>
         `;
       }).join("") || `<div class="smart-empty">ไม่มีข้อมูลสำหรับแสดงกราฟ</div>`;
@@ -4703,6 +4758,70 @@
       }).join("") || `<div class="smart-empty">ไม่มีข้อมูลสำหรับแสดงกราฟ</div>`;
     }
 
+    function dashboardUpdateAge(updatedAt) {
+      const timestamp = Date.parse(updatedAt || "");
+      if (!Number.isFinite(timestamp)) return null;
+      return Math.max(0, Math.floor((Date.now() - timestamp) / 86400000));
+    }
+
+    function dashboardUpdateTone(days) {
+      if (days == null) return { label: "ยังไม่มีข้อมูล", klass: "" };
+      if (days <= 2) return { label: `${days} วัน`, klass: "good" };
+      if (days <= 4) return { label: `${days} วัน`, klass: "warn" };
+      if (days <= 6) return { label: `${days} วัน`, klass: "hot" };
+      return { label: `${days} วัน`, klass: "danger" };
+    }
+
+    function renderDashboardLatestUpdates(rows) {
+      const updateRows = [...(rows || [])]
+        .filter(position => position.latestUpdate)
+        .sort((a, b) => dashboardUpdateAge(b.latestUpdate) - dashboardUpdateAge(a.latestUpdate))
+        .slice(0, 8);
+      return updateRows.map(position => {
+        const days = dashboardUpdateAge(position.latestUpdate);
+        const tone = dashboardUpdateTone(days);
+        const latestDate = formatDateTime(position.latestUpdate);
+        return `
+          <div class="latest-update-item">
+            <div class="latest-update-head">
+              <span title="${escapeHtml(position.name)}">${renderGroupTextLink(position.name, position.facebookUrl)}</span>
+              <span class="fresh-pill ${tone.klass}">${escapeHtml(tone.label)}</span>
+            </div>
+            <div class="clip-meta">ล่าสุด ${escapeHtml(latestDate)}</div>
+            <div class="subtext" title="${escapeHtml(position.latestUpdateItem || "")}">${escapeHtml(position.latestUpdateItem || "ยังไม่มีรายการอัปเดต")}</div>
+          </div>
+        `;
+      }).join("") || `<div class="smart-empty">ยังไม่มีข้อมูลอัปเดตล่าสุด</div>`;
+    }
+
+    function formatUpdateHistoryEntry(entry) {
+      const typeLabel = entry?.type === "document" ? "ลิงก์เอกสาร" : entry?.type === "clip" ? "ลิงก์คลิป" : "รายการ";
+      const dateText = entry?.at ? formatDateOnly(entry.at) : "-";
+      const statusText = entry?.status ? `: ${entry.status}` : "";
+      const titleText = entry?.title || "ไม่ระบุวิชา";
+      return { dateText, titleText, line: `${typeLabel}${statusText}` };
+    }
+
+    function openUpdateHistory(positionName) {
+      const position = (dashboardData?.positions || []).find(item => item.name === positionName);
+      const history = Array.isArray(position?.updateHistory) ? position.updateHistory.slice(0, 5) : [];
+      const body = history.length
+        ? `<div class="history-list">${history.map((entry, index) => {
+            const formatted = formatUpdateHistoryEntry(entry);
+            return `
+              <div class="latest-update-item">
+                <div class="latest-update-head">
+                  <span>${index + 1}. ${escapeHtml(formatted.dateText)}</span>
+                  <span class="badge">${escapeHtml(formatted.line)}</span>
+                </div>
+                <div class="subtext">${escapeHtml(formatted.titleText)}</div>
+              </div>
+            `;
+          }).join("")}</div>`
+        : `<div class="smart-empty">ยังไม่มีประวัติอัปเดตของกลุ่มนี้</div>`;
+      openResultModal(`ประวัติการอัปเดต: ${positionName || "-"}`, body);
+    }
+
     function renderDashboardCharts(rows) {
       const visibleRows = rows || [];
       const total = visibleRows.reduce((sum, position) => sum + toNumber(position.total), 0);
@@ -4716,7 +4835,10 @@
           label: position.name,
           url: position.facebookUrl || "",
           value: toNumber(position.missing),
-          display: `${toNumber(position.missing).toLocaleString("th-TH")} ค้าง`
+          display: `${toNumber(position.missing).toLocaleString("th-TH")} ค้าง`,
+          latestUpdate: position.latestUpdate || "",
+          latestUpdateItem: position.latestUpdateItem || "",
+          updateHistory: position.updateHistory || []
         }));
 
       const progressRows = [...visibleRows]
@@ -4796,6 +4918,80 @@
       });
     }
 
+    function isDashboardClosed(position) {
+      return String(position?.closedCourse || "").toLowerCase() === "true";
+    }
+
+    function dashboardGroupText(position) {
+      const label = String(position?.groupLabel || "").trim();
+      if (label && !isHttpUrlClient(label)) return label;
+      return position?.name || "กลุ่ม Facebook";
+    }
+
+    function renderClosedCourseRows(rows) {
+      const section = document.getElementById("closedCourseSection");
+      const list = document.getElementById("closedCourseRows");
+      const count = document.getElementById("closedCourseCount");
+      dashboardClosedRows = rows || [];
+      if (!section || !list || !count) return;
+      if (!dashboardClosedRows.length) {
+        section.classList.add("hidden");
+        list.innerHTML = "";
+        count.textContent = "0 คอร์ส";
+        return;
+      }
+      section.classList.remove("hidden");
+      count.textContent = `${dashboardClosedRows.length.toLocaleString("th-TH")} คอร์ส`;
+      list.innerHTML = dashboardClosedRows.map((position, index) => {
+        const complete = clampPercent(position.percent) >= 100 && toNumber(position.missing) === 0;
+        const link = position.facebookUrl
+          ? `<a class="button-link" href="${escapeHtml(position.facebookUrl)}" target="_blank" rel="noopener">เปิดกลุ่ม</a>`
+          : `<span class="subtext">ไม่มี URL</span>`;
+        return `
+          <div class="closed-course-item">
+            <div>
+              <div class="result-name">${renderGroupTextLink(position.name, position.facebookUrl)}</div>
+              <div class="clip-meta">${escapeHtml(dashboardGroupText(position))}</div>
+            </div>
+            <div><strong>${escapeHtml(position.total || "0")}</strong><div class="clip-meta">วิชา</div></div>
+            <div><strong>${escapeHtml(position.done || "0")}</strong><div class="clip-meta">ลงแล้ว</div></div>
+            <div><span class="badge ${complete ? "good" : "warn"}">${complete ? "ครบ 100%" : "ปิดแล้วแต่ยังไม่ครบ"}</span></div>
+            <div class="closed-course-actions">
+              ${link}
+              <button class="button-link" data-closed-detail-index="${index}">ดูรายละเอียด</button>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    function openClosedCourseDetail(position) {
+      if (!position) return;
+      const complete = clampPercent(position.percent) >= 100 && toNumber(position.missing) === 0;
+      const link = position.facebookUrl
+        ? `<a class="button-link" href="${escapeHtml(position.facebookUrl)}" target="_blank" rel="noopener">เปิดกลุ่ม</a>`
+        : `<span class="subtext">ไม่มี URL กลุ่ม</span>`;
+      const body = `
+        <div class="scan-summary">
+          <div><strong>${renderGroupTextLink(position.name, position.facebookUrl)}</strong></div>
+          <div>ชื่อกลุ่ม: ${escapeHtml(dashboardGroupText(position))}</div>
+          <div>${link}</div>
+        </div>
+        <table class="dashboard-table" style="min-width:0; margin-top:12px;">
+          <tbody>
+            <tr><th>สถานะ</th><td>${complete ? `<span class="badge good">ปิดแล้วครบ 100%</span>` : `<span class="badge warn">ปิดแล้วแต่ยังไม่ครบ</span>`}</td></tr>
+            <tr><th>วิชาทั้งหมด</th><td>${escapeHtml(position.total || "0")}</td></tr>
+            <tr><th>ลงลิงก์แล้ว</th><td>${escapeHtml(position.done || "0")}</td></tr>
+            <tr><th>ยังไม่ลงลิงก์</th><td>${escapeHtml(position.missing || "0")}</td></tr>
+            <tr><th>% สำเร็จ</th><td>${escapeHtml(position.percent || "-")}</td></tr>
+            <tr><th>อัปเดตล่าสุด</th><td>${escapeHtml(position.latestUpdate ? formatDateTime(position.latestUpdate) : "ยังไม่มีข้อมูล")}</td></tr>
+            <tr><th>รายการล่าสุด</th><td>${escapeHtml(position.latestUpdateItem || "ยังไม่มีรายการอัปเดต")}</td></tr>
+          </tbody>
+        </table>
+      `;
+      openResultModal(`คอร์สที่ปิดแล้ว: ${position.name || "-"}`, body);
+    }
+
     function renderDashboardRows() {
       const rows = dashboardData?.positions || [];
       const query = document.getElementById("dashboardSearchInput").value.trim().toLowerCase();
@@ -4803,14 +4999,16 @@
         const haystack = `${position.name} ${position.groupLabel || ""} ${position.percent || ""}`.toLowerCase();
         return !query || haystack.includes(query);
       });
-      renderDashboardCharts(filtered);
-      renderDashboardTodos(filtered);
+      const activeRows = filtered.filter(position => !isDashboardClosed(position));
+      const closedRows = sortDashboardRows(filtered.filter(isDashboardClosed));
+      renderDashboardCharts(activeRows);
+      renderDashboardTodos(activeRows);
+      renderClosedCourseRows(closedRows);
       updateDashboardSortMarkers();
-      const sortedRows = sortDashboardRows(filtered);
+      const sortedRows = sortDashboardRows(activeRows);
 
       document.getElementById("dashboardRows").innerHTML = sortedRows.map(position => {
-        const closed = String(position.closedCourse || "").toLowerCase() === "true";
-        const groupText = position.groupLabel || position.facebookUrl || "-";
+        const groupText = dashboardGroupText(position);
         const link = position.facebookUrl
           ? `<a class="button-link" href="${escapeHtml(position.facebookUrl)}" target="_blank" rel="noopener">เปิดกลุ่ม</a>`
           : `<span class="subtext">ไม่มี URL</span>`;
@@ -4825,18 +5023,25 @@
               <div class="result-name">${renderGroupTextLink(groupText, position.facebookUrl)}</div>
               <div style="margin-top:6px;">${link}</div>
             </td>
-            <td>${closed ? `<span class="badge good">ปิดแล้ว</span>` : `<span class="badge">ยังเปิด</span>`}</td>
+            <td><span class="badge">ยังเปิด</span></td>
           </tr>
         `;
       }).join("") || `<tr><td colspan="7" class="subtext">ไม่พบตำแหน่งจากคำค้นนี้</td></tr>`;
     }
 
     function renderDashboardSummary(result) {
-      const totals = result?.totals || {};
+      const activeRows = (result?.positions || []).filter(position => !isDashboardClosed(position));
+      const totals = activeRows.reduce((summary, position) => {
+        summary.total += toNumber(position.total);
+        summary.done += toNumber(position.done);
+        summary.missing += toNumber(position.missing);
+        return summary;
+      }, { total: 0, done: 0, missing: 0 });
+      const percent = totals.total ? `${Math.round((totals.done / totals.total) * 100)}%` : "-";
       document.getElementById("dashboardSummary").innerHTML = `
-        <div class="metric"><div class="metric-value">${(result?.count || 0).toLocaleString("th-TH")}</div><div class="metric-label">ตำแหน่ง</div></div>
+        <div class="metric"><div class="metric-value">${activeRows.length.toLocaleString("th-TH")}</div><div class="metric-label">ตำแหน่งที่ยังเปิด</div></div>
         <div class="metric"><div class="metric-value">${(totals.total || 0).toLocaleString("th-TH")}</div><div class="metric-label">วิชาทั้งหมด</div></div>
-        <div class="metric"><div class="metric-value">${escapeHtml(totals.percent || "-")}</div><div class="metric-label">สำเร็จรวม</div></div>
+        <div class="metric"><div class="metric-value">${escapeHtml(percent)}</div><div class="metric-label">สำเร็จรวม</div></div>
       `;
     }
 
@@ -4857,6 +5062,7 @@
         const result = await response.json();
         if (!response.ok || !result.ok) throw new Error(result.error || "โหลด Dashboard ไม่สำเร็จ");
         dashboardData = result;
+        dashboardNeedsReload = false;
         renderDashboardSummary(result);
         renderDashboardRows();
         updateReportCounts();
@@ -4864,245 +5070,6 @@
       } finally {
         button.disabled = false;
         button.textContent = "โหลด Dashboard";
-      }
-    }
-
-    function syncTelegramSettingsForm() {
-      const telegram = appConfig.telegram || {};
-      const setValue = (id, value) => {
-        const element = document.getElementById(id);
-        if (element) element.value = value || "";
-      };
-      const setChecked = (id, value) => {
-        const element = document.getElementById(id);
-        if (element) element.checked = Boolean(value);
-      };
-      setChecked("telegramEnabled", telegram.enabled);
-      setChecked("telegramNaturalLanguage", telegram.allowNaturalLanguage !== false);
-      setChecked("telegramNotifyUpdates", telegram.sendOnManualUpdate);
-      setValue("telegramBotToken", telegram.botToken || "");
-      setValue("telegramChatId", telegram.chatId || "");
-      setValue("telegramPublicBaseUrl", telegram.publicBaseUrl || "https://ggdclip-organizer-v1-render.onrender.com");
-      setValue("telegramDailyTime", telegram.dailySummaryTime || "09:00");
-      updateTelegramStatusPanel(taskMonitorData?.telegram);
-    }
-
-    function readTelegramSettingsFromForm() {
-      return {
-        ...(appConfig.telegram || {}),
-        enabled: document.getElementById("telegramEnabled")?.checked || false,
-        allowNaturalLanguage: document.getElementById("telegramNaturalLanguage")?.checked !== false,
-        sendOnManualUpdate: document.getElementById("telegramNotifyUpdates")?.checked || false,
-        botToken: document.getElementById("telegramBotToken")?.value.trim() || "",
-        chatId: document.getElementById("telegramChatId")?.value.trim() || "",
-        publicBaseUrl: document.getElementById("telegramPublicBaseUrl")?.value.trim() || "",
-        dailySummaryTime: document.getElementById("telegramDailyTime")?.value.trim() || "09:00",
-        timeZone: "Asia/Bangkok"
-      };
-    }
-
-    function updateTelegramStatusPanel(status) {
-      const panel = document.getElementById("telegramStatusPanel");
-      if (!panel) return;
-      const telegram = status || taskMonitorData?.telegram || {};
-      const configured = telegram.configured || (appConfig.telegram?.botToken && appConfig.telegram?.chatId);
-      const enabled = telegram.enabled || appConfig.telegram?.enabled;
-      const webhookReady = telegram.webhookReady;
-      panel.innerHTML = `
-        <div><strong>${enabled ? "เปิดใช้งาน" : "ยังไม่เปิดใช้งาน"}</strong></div>
-        <div>Bot/กลุ่ม: ${configured ? "ตั้งค่าแล้ว" : "ยังไม่ครบ"}</div>
-        <div>Webhook: ${webhookReady ? "พร้อมรับคำถาม" : "ยังไม่เชื่อม"}</div>
-        <div>สรุปรายวัน: ${escapeHtml(appConfig.telegram?.dailySummaryTime || telegram.dailySummaryTime || "-")}</div>
-      `;
-    }
-
-    async function saveTelegramSettings() {
-      appConfig.telegram = readTelegramSettingsFromForm();
-      await saveConfigFromForm();
-      syncTelegramSettingsForm();
-      setStatus("สถานะ: บันทึก Telegram แล้ว");
-      return appConfig.telegram;
-    }
-
-    function taskPriorityLabel(priority) {
-      if (priority === "urgent") return ["ด่วน", "danger"];
-      if (priority === "high") return ["สูง", "warn"];
-      if (priority === "normal") return ["ปกติ", ""];
-      return ["ต่ำ", ""];
-    }
-
-    function taskTypeLabel(type) {
-      if (type === "clip-ready") return "มีคลิปแล้ว";
-      if (type === "clip-missing") return "ยังไม่พบคลิป";
-      if (type === "document-missing") return "เอกสารค้าง";
-      if (type === "position-review") return "ตำแหน่งต้องตรวจ";
-      return type || "-";
-    }
-
-    function renderTaskMonitorSummary(result) {
-      const summary = result?.summary || {};
-      document.getElementById("taskMonitorSummary").innerHTML = `
-        <div class="metric"><div class="metric-value">${toNumber(summary.pendingSubjects).toLocaleString("th-TH")}</div><div class="metric-label">งานค้างคลิป</div></div>
-        <div class="metric"><div class="metric-value">${toNumber(summary.pendingWithClip).toLocaleString("th-TH")}</div><div class="metric-label">มีคลิปรอตรวจ</div></div>
-        <div class="metric"><div class="metric-value">${toNumber(summary.missingDocuments).toLocaleString("th-TH")}</div><div class="metric-label">เอกสารค้าง</div></div>
-        <div class="metric"><div class="metric-value">${toNumber(summary.openPositions).toLocaleString("th-TH")}</div><div class="metric-label">ตำแหน่งเปิด</div></div>
-      `;
-      document.getElementById("taskMonitorSubtitle").textContent = `อัปเดตล่าสุด ${formatDateTime(result.generatedAt)} · ดึงจาก ${result.sources?.length || 0} แหล่งข้อมูล`;
-    }
-
-    function renderTaskMonitorCards(result) {
-      const summary = result?.summary || {};
-      const topPosition = (result?.positions || []).find(position => position.missingCount);
-      const cards = [
-        summary.urgentTasks ? { count: summary.urgentTasks, label: `งานด่วน ${summary.urgentTasks} รายการ`, detail: "ส่วนใหญ่คือมีคลิปแล้วแต่ยังค้างลิงก์", tone: "danger", filter: "urgent", action: "ดูงานด่วน" } : null,
-        summary.pendingWithClip ? { count: summary.pendingWithClip, label: `มีคลิปรอตรวจ ${summary.pendingWithClip} วิชา`, detail: "พร้อมไล่ลงลิงก์/โพสต์กลุ่ม", tone: "warn", filter: "clip-ready" } : null,
-        summary.pendingNoClipFound ? { count: summary.pendingNoClipFound, label: `ยังไม่พบคลิป ${summary.pendingNoClipFound} วิชา`, detail: "ต้องหาไฟล์หรือวางแผนตัดเพิ่ม", tone: "danger", filter: "clip-missing" } : null,
-        topPosition ? { count: topPosition.missingCount, label: `ควรเริ่มที่ ${topPosition.name}`, detail: `มีคลิปรอตรวจ ${topPosition.pendingWithClip || 0} วิชา`, tone: "warn", filter: "position-review" } : null
-      ].filter(Boolean);
-      renderTodoCards("taskMonitorCards", cards.length ? cards : [{ count: "พร้อม", label: "ยังไม่พบงานค้างสำคัญ", detail: "ตรวจสรุปและส่ง Telegram ได้", tone: "good" }], {
-        title: "ลำดับงานที่ควรจับก่อน",
-        hint: "กดดูรายการเพื่อกรองตารางงานด้านล่าง"
-      });
-    }
-
-    function filteredTaskMonitorTasks() {
-      const rows = taskMonitorData?.tasks || [];
-      const type = document.getElementById("taskTypeFilter")?.value || "all";
-      const quickFilter = taskMonitorFilter || "all";
-      const query = (document.getElementById("taskSearchInput")?.value || "").trim().toLowerCase();
-      return rows.filter(task => {
-        const matchType = type === "all" || task.type === type;
-        const matchQuick = quickFilter === "all" || task.type === quickFilter || task.priority === quickFilter;
-        const haystack = `${task.position} ${task.group} ${task.order} ${task.title} ${task.detail} ${task.action}`.toLowerCase();
-        return matchType && matchQuick && (!query || haystack.includes(query));
-      });
-    }
-
-    function renderTaskMonitorRows() {
-      const rows = filteredTaskMonitorTasks();
-      const tbody = document.getElementById("taskMonitorRows");
-      if (!tbody) return;
-      tbody.innerHTML = rows.slice(0, 400).map(task => {
-        const [priorityText, priorityTone] = taskPriorityLabel(task.priority);
-        const link = task.url ? `<div style="margin-top:6px;"><a class="button-link" href="${escapeHtml(task.url)}" target="_blank" rel="noopener">เปิดกลุ่ม/ลิงก์</a></div>` : "";
-        return `
-          <tr>
-            <td><span class="badge ${priorityTone}">${escapeHtml(priorityText)}</span></td>
-            <td>${escapeHtml(taskTypeLabel(task.type))}</td>
-            <td><strong>${escapeHtml(task.position || "-")}</strong><div class="subtext">${escapeHtml(task.group || "")}</div></td>
-            <td>
-              <div class="result-name">${task.order ? `${escapeHtml(task.order)} · ` : ""}${escapeHtml(task.title || "-")}</div>
-              <div class="subtext">${escapeHtml(task.detail || "")}</div>
-              ${task.score ? `<div class="clip-meta">คะแนน ${escapeHtml(task.score)}${task.matchLevel ? ` · ${escapeHtml(task.matchLevel)}` : ""}</div>` : ""}
-              ${link}
-            </td>
-            <td>${escapeHtml(task.action || "-")}</td>
-            <td><span class="subtext">${escapeHtml(task.source || "-")}</span></td>
-          </tr>
-        `;
-      }).join("") || `<tr><td colspan="6" class="subtext">ไม่พบงานตามตัวกรองนี้</td></tr>`;
-    }
-
-    function renderTaskMonitorSources(result) {
-      const container = document.getElementById("taskMonitorSources");
-      if (!container) return;
-      const warnings = result?.warnings?.length ? `<div class="warning">${result.warnings.map(escapeHtml).join("<br>")}</div>` : "";
-      const sources = (result?.sources || []).map(source => {
-        const label = source.name || source.type;
-        const detail = source.count || source.rowCount || source.totalVideos || source.scannedAt || "";
-        return `<div>${escapeHtml(label)}${detail ? ` · ${escapeHtml(detail)}` : ""}</div>`;
-      }).join("");
-      container.innerHTML = `${sources || "<div>ยังไม่มีแหล่งข้อมูล</div>"}${warnings}`;
-    }
-
-    function renderTaskMonitor(result) {
-      taskMonitorData = result;
-      renderTaskMonitorSummary(result);
-      renderTaskMonitorCards(result);
-      renderTaskMonitorRows();
-      renderTaskMonitorSources(result);
-      updateTelegramStatusPanel(result.telegram);
-    }
-
-    async function loadTaskMonitorView(options = {}) {
-      const sheetUrl = document.getElementById("sheetUrl").value.trim();
-      if (!sheetUrl) throw new Error("กรุณาใส่ลิงก์ชีตก่อน");
-      const button = document.getElementById("loadTaskMonitorButton");
-      if (button) {
-        button.disabled = true;
-        button.textContent = "กำลังเช็ก...";
-      }
-      if (!options.auto) setStatus("สถานะ: กำลังเช็กงานทั้งหมด");
-      try {
-        const response = await fetch("/api/task-monitor", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sheetUrl, includeLocalAudit: true })
-        });
-        const result = await response.json();
-        if (!response.ok || !result.ok) throw new Error(result.error || "เช็กงานไม่สำเร็จ");
-        renderTaskMonitor(result);
-        setStatus(`สถานะ: เช็กงานแล้ว ${result.tasks.length.toLocaleString("th-TH")} รายการ`);
-      } finally {
-        if (button) {
-          button.disabled = false;
-          button.textContent = "เช็กงานทั้งหมด";
-        }
-      }
-    }
-
-    async function sendTelegramSummary() {
-      await saveTelegramSettings();
-      const sheetUrl = document.getElementById("sheetUrl").value.trim();
-      const button = document.getElementById("sendTelegramSummaryButton");
-      button.disabled = true;
-      button.textContent = "กำลังส่ง...";
-      try {
-        const response = await fetch("/api/telegram/send-summary", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sheetUrl, includeLocalAudit: true })
-        });
-        const result = await response.json();
-        if (!response.ok || !result.ok) throw new Error(result.error || "ส่ง Telegram ไม่สำเร็จ");
-        setStatus("สถานะ: ส่งสรุปเข้า Telegram แล้ว");
-      } finally {
-        button.disabled = false;
-        button.textContent = "ส่งเข้า Telegram";
-      }
-    }
-
-    async function testTelegramConnection() {
-      await saveTelegramSettings();
-      const button = document.getElementById("testTelegramButton");
-      button.disabled = true;
-      button.textContent = "กำลังทดสอบ...";
-      try {
-        const response = await fetch("/api/telegram/test", { method: "POST" });
-        const result = await response.json();
-        if (!response.ok || !result.ok) throw new Error(result.error || "ทดสอบ Telegram ไม่สำเร็จ");
-        updateTelegramStatusPanel(result.telegram);
-        setStatus("สถานะ: ทดสอบ Telegram สำเร็จ");
-      } finally {
-        button.disabled = false;
-        button.textContent = "ทดสอบส่งข้อความ";
-      }
-    }
-
-    async function setTelegramWebhook() {
-      await saveTelegramSettings();
-      const button = document.getElementById("setTelegramWebhookButton");
-      button.disabled = true;
-      button.textContent = "กำลังเชื่อม...";
-      try {
-        const response = await fetch("/api/telegram/set-webhook", { method: "POST" });
-        const result = await response.json();
-        if (!response.ok || !result.ok) throw new Error(result.error || "เชื่อม webhook ไม่สำเร็จ");
-        updateTelegramStatusPanel(result.telegram);
-        setStatus("สถานะ: เชื่อม Telegram webhook แล้ว");
-      } finally {
-        button.disabled = false;
-        button.textContent = "เชื่อม webhook";
       }
     }
 
@@ -6296,7 +6263,6 @@
 
     const tabParamToView = {
       dashboard: "dashboard",
-      tasks: "tasks",
       organizer: "organizer",
       "subject-map": "subjectMap",
       subjectMap: "subjectMap",
@@ -6308,7 +6274,6 @@
     };
     const viewToTabParam = {
       dashboard: "dashboard",
-      tasks: "tasks",
       organizer: "organizer",
       subjectMap: "subject-map",
       library: "library",
@@ -6351,7 +6316,6 @@
       document.getElementById("subjectMapView").classList.toggle("hidden", view !== "subjectMap");
       document.getElementById("libraryView").classList.toggle("hidden", view !== "library");
       document.getElementById("dashboardView").classList.toggle("hidden", view !== "dashboard");
-      document.getElementById("tasksView").classList.toggle("hidden", view !== "tasks");
       document.getElementById("documentsView").classList.toggle("hidden", view !== "documents");
       document.getElementById("trialView").classList.toggle("hidden", view !== "trial");
       document.getElementById("reportsView").classList.toggle("hidden", view !== "reports");
@@ -6372,15 +6336,9 @@
           document.getElementById("subjectMapInput").value = current;
         }
       }
-      if (view === "dashboard" && !dashboardData) {
+      if (view === "dashboard" && (!dashboardData || dashboardNeedsReload)) {
         loadDashboardView({ auto: true }).catch(error => {
           document.getElementById("dashboardRows").innerHTML = `<tr><td colspan="7"><div class="warning">${escapeHtml(error.message)}</div></td></tr>`;
-        });
-      }
-      if (view === "tasks" && !taskMonitorData) {
-        loadTaskMonitorView({ auto: true }).catch(error => {
-          document.getElementById("taskMonitorRows").innerHTML = `<tr><td colspan="6"><div class="warning">${escapeHtml(error.message)}</div></td></tr>`;
-          setStatus("สถานะ: เช็กงานไม่สำเร็จ");
         });
       }
       if (view === "organizer" && !subjectsLoadedFromSheet) {
@@ -7522,31 +7480,6 @@
       document.getElementById("dashboardRows").innerHTML = `<tr><td colspan="7"><div class="warning">${escapeHtml(error.message)}</div></td></tr>`;
     }));
     document.getElementById("dashboardSearchInput").addEventListener("input", renderDashboardRows);
-    document.getElementById("loadTaskMonitorButton").addEventListener("click", () => loadTaskMonitorView().catch(error => {
-      document.getElementById("taskMonitorRows").innerHTML = `<tr><td colspan="6"><div class="warning">${escapeHtml(error.message)}</div></td></tr>`;
-      setStatus("สถานะ: เช็กงานไม่สำเร็จ");
-    }));
-    document.getElementById("taskSearchInput").addEventListener("input", renderTaskMonitorRows);
-    document.getElementById("taskTypeFilter").addEventListener("change", () => {
-      taskMonitorFilter = "all";
-      renderTaskMonitorRows();
-    });
-    document.getElementById("taskMonitorCards").addEventListener("click", event => {
-      const button = event.target.closest("[data-todo-filter]");
-      if (!button) return;
-      const filter = button.dataset.todoFilter || "all";
-      taskMonitorFilter = filter;
-      const select = document.getElementById("taskTypeFilter");
-      select.value = ["clip-ready", "clip-missing", "document-missing", "position-review"].includes(filter) ? filter : "all";
-      if (filter === "urgent") {
-        select.value = "all";
-      }
-      renderTaskMonitorRows();
-    });
-    document.getElementById("saveTelegramSettingsButton").addEventListener("click", () => saveTelegramSettings().catch(error => setStatus(`สถานะ: บันทึก Telegram ไม่สำเร็จ - ${error.message}`)));
-    document.getElementById("testTelegramButton").addEventListener("click", () => testTelegramConnection().catch(error => setStatus(`สถานะ: ทดสอบ Telegram ไม่สำเร็จ - ${error.message}`)));
-    document.getElementById("sendTelegramSummaryButton").addEventListener("click", () => sendTelegramSummary().catch(error => setStatus(`สถานะ: ส่ง Telegram ไม่สำเร็จ - ${error.message}`)));
-    document.getElementById("setTelegramWebhookButton").addEventListener("click", () => setTelegramWebhook().catch(error => setStatus(`สถานะ: เชื่อม webhook ไม่สำเร็จ - ${error.message}`)));
     document.querySelector(".dashboard-table thead").addEventListener("click", event => {
       const header = event.target.closest("th.sortable");
       if (!header) return;
@@ -7557,6 +7490,12 @@
         dashboardSort = { key, direction: key === "name" || key === "group" ? "asc" : "desc" };
       }
       renderDashboardRows();
+    });
+    document.getElementById("closedCourseSection").addEventListener("click", event => {
+      const button = event.target.closest("[data-closed-detail-index]");
+      if (!button) return;
+      const index = Number(button.dataset.closedDetailIndex);
+      openClosedCourseDetail(dashboardClosedRows[index]);
     });
     document.getElementById("loadDocumentLibraryButton").addEventListener("click", () => loadDocumentLibraryView().catch(error => {
       document.getElementById("docLibraryRows").innerHTML = `<tr><td><div class="warning">${escapeHtml(error.message)}</div></td></tr>`;
@@ -7710,6 +7649,11 @@
     document.getElementById("dashboardTodoCards").addEventListener("click", event => {
       const button = event.target.closest("[data-todo-filter]");
       if (button) applyTodoFilter(button.dataset.todoFilter);
+    });
+    document.getElementById("dashboardCharts").addEventListener("click", event => {
+      const historyButton = event.target.closest("[data-action='show-update-history']");
+      if (!historyButton) return;
+      openUpdateHistory(historyButton.dataset.position || "");
     });
     document.getElementById("reportsView").addEventListener("click", event => {
       const button = event.target.closest("[data-report-filter]");
