@@ -3298,6 +3298,10 @@ async function handleApi(req, res, url) {
       if (line.allowedSourceId && sourceId && sourceId !== line.allowedSourceId) continue;
 
       try {
+        if (/^(\/?line\s*id|\/?lineid|group\s*id|source\s*id|ไลน์\s*ไอดี|ขอรหัสกลุ่ม)$/i.test(text)) {
+          await replyLineMessage(event.replyToken, `LINE source id: ${sourceId || "-"}\nนำค่านี้ไปใส่ LINE_TARGET_ID ใน Render เพื่อให้ระบบส่งแจ้งเตือนไปห้องนี้ได้`, line);
+          continue;
+        }
         const config = await readAppConfig();
         const sheetUrl = config.sheetUrl || "";
         if (!sheetUrl) throw new Error("ยังไม่ได้ตั้งค่า Google Sheet URL");
