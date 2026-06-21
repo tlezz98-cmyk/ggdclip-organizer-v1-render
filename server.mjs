@@ -1715,7 +1715,8 @@ async function loadTaskMonitor(sheetUrl, auth = null, options = {}) {
   const closedPositionNames = new Set(dashboardPositions
     .filter(position => String(position.closedCourse || "").toLowerCase() === "true")
     .map(position => position.name));
-  const openManualRows = manualRows.filter(row => row.position && !closedPositionNames.has(row.position));
+  const manualRowsWithPosition = manualRows.filter(row => row.position);
+  const openManualRows = manualRowsWithPosition.filter(row => !closedPositionNames.has(row.position));
   const pendingClipRows = openManualRows.filter(row => statusKind(row.sheetStatus) !== "done");
   const pendingDocumentRows = openManualRows.filter(row => statusKind(row.documentStatus) !== "done");
 
@@ -1838,7 +1839,7 @@ async function loadTaskMonitor(sheetUrl, auth = null, options = {}) {
     String(a.order).localeCompare(String(b.order), "th", { numeric: true })
   );
 
-  const subjects = openManualRows.map(row => {
+  const subjects = manualRowsWithPosition.map(row => {
     const auditRow = pendingAuditByKey.get(manualRowKey(row));
     const clipDone = statusKind(row.sheetStatus) === "done";
     const documentDone = statusKind(row.documentStatus) === "done";
@@ -1859,6 +1860,7 @@ async function loadTaskMonitor(sheetUrl, auth = null, options = {}) {
       latestUpdate: row.latestUpdate || "",
       latestUpdateItem: row.latestUpdateItem || "",
       updateHistory: parseUpdateHistoryEntries(row.updateHistory),
+      closedCourse: closedPositionNames.has(row.position) ? "TRUE" : "FALSE",
       hasClip,
       clipEvidence: hasClip ? "พบคลิป/มีข้อมูลคลิปในระบบ" : "ยังไม่พบคลิปจาก audit ล่าสุด",
       needsClipLink: !clipDone,
@@ -2008,7 +2010,8 @@ function formatSubjectStatusLine(subject, index = 0, options = {}) {
   const order = subject.order ? ` ลำดับ ${subject.order}` : "";
   const latest = subject.latestUpdate ? ` | ล่าสุด ${formatShortThaiDate(subject.latestUpdate)} (${formatUpdateAge(subject.latestUpdate)})` : "";
   const clipInfo = options.includeClip ? ` | คลิปในระบบ: ${subject.hasClip ? "พบ" : "ยังไม่พบ"}` : "";
-  return `${prefix}${subject.position}${order}: ${subject.title}\n   คลิป: ${clipStatusLabel(subject)} | เอกสาร: ${documentStatusLabel(subject)}${latest}${clipInfo}`;
+  const closedInfo = String(subject.closedCourse || "").toLowerCase() === "true" ? " | คอร์ส: ปิดแล้ว" : "";
+  return `${prefix}${subject.position}${order}: ${subject.title}\n   คลิป: ${clipStatusLabel(subject)} | เอกสาร: ${documentStatusLabel(subject)}${latest}${clipInfo}${closedInfo}`;
 }
 
 function questionTerms(text) {
@@ -2144,6 +2147,7 @@ function answerPositionQuestion(query, position, monitor) {
     : "ยังไม่มีข้อมูลล่าสุด";
   const lines = [
     `${position.name}`,
+    `สถานะคอร์ส: ${String(position.closedCourse || "").toLowerCase() === "true" ? "ปิดคอร์สแล้ว" : "ยังเปิดอยู่"}`,
     `คืบหน้า: ${position.percent || "0%"}`,
     `ลงแล้ว: ${position.done || 0}/${position.total || 0} | ยังไม่ลงลิงก์: ${position.missingCount || position.missing || 0}`,
     `เอกสารค้าง: ${docPending.length}`,
