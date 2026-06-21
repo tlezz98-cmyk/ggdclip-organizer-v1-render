@@ -36,5 +36,16 @@
     "timeZone": "Asia/Bangkok",
     "sendOnManualUpdate": false,
     "allowNaturalLanguage": true
+  },
+  "line": {
+    "enabled": false,
+    "channelAccessToken": "",
+    "channelSecret": "",
+    "targetId": "",
+    "publicBaseUrl": "",
+    "dailySummaryTime": "09:00",
+    "timeZone": "Asia/Bangkok",
+    "sendOnManualUpdate": false,
+    "allowNaturalLanguage": true
   }
 }

@@ -36,5 +36,16 @@
     "timeZone": "Asia/Bangkok",
     "sendOnManualUpdate": false,
     "allowNaturalLanguage": true
+  },
+  "line": {
+    "enabled": false,
+    "channelAccessToken": "",
+    "channelSecret": "",
+    "targetId": "",
+    "publicBaseUrl": "https://ggdclip-organizer-v1-render.onrender.com",
+    "dailySummaryTime": "09:00",
+    "timeZone": "Asia/Bangkok",
+    "sendOnManualUpdate": false,
+    "allowNaturalLanguage": true
   }
 }

@@ -3,7 +3,7 @@ import { access, link, mkdir, readdir, readFile, stat, unlink, writeFile } from 
 import { dirname, extname, join, normalize, parse, relative, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { createSign, randomBytes } from "node:crypto";
+import { createHmac, createSign, randomBytes, timingSafeEqual } from "node:crypto";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 const renderBaseUrl = process.env.RENDER_EXTERNAL_URL ||
@@ -287,10 +287,14 @@ async function readAppConfig() {
   return local ? { ...defaults, ...local } : defaults;
 }
 
-async function readRequestJson(req) {
+async function readRequestText(req) {
   const chunks = [];
   for await (const chunk of req) chunks.push(chunk);
-  const raw = Buffer.concat(chunks).toString("utf8");
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+async function readRequestJson(req) {
+  const raw = await readRequestText(req);
   return raw ? JSON.parse(raw) : {};
 }
 
@@ -455,6 +459,45 @@ function publicTelegramConfig(config) {
   };
 }
 
+async function getLineConfig() {
+  const config = await readAppConfig();
+  const line = config.line || {};
+  const channelAccessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN || line.channelAccessToken || "";
+  const channelSecret = process.env.LINE_CHANNEL_SECRET || line.channelSecret || "";
+  const targetId = process.env.LINE_TARGET_ID || process.env.LINE_GROUP_ID || line.targetId || line.groupId || "";
+  const publicBaseUrl = process.env.LINE_PUBLIC_BASE_URL || process.env.PUBLIC_BASE_URL || process.env.RENDER_EXTERNAL_URL || line.publicBaseUrl || renderBaseUrl || "";
+  const dailySummaryTime = process.env.LINE_DAILY_SUMMARY_TIME || line.dailySummaryTime || "";
+  const timeZone = process.env.LINE_TIME_ZONE || line.timeZone || "Asia/Bangkok";
+  const enabled = String(process.env.LINE_ENABLED || line.enabled || "").toLowerCase() === "true" || line.enabled === true;
+  return {
+    enabled,
+    configured: Boolean(channelAccessToken && (targetId || channelSecret)),
+    channelAccessToken,
+    channelSecret: String(channelSecret || "").trim(),
+    targetId: String(targetId || "").trim(),
+    publicBaseUrl: String(publicBaseUrl || "").replace(/\/+$/, ""),
+    dailySummaryTime: String(dailySummaryTime || "").trim(),
+    timeZone,
+    sendOnManualUpdate: line.sendOnManualUpdate === true || String(process.env.LINE_SEND_ON_MANUAL_UPDATE || "").toLowerCase() === "true",
+    allowNaturalLanguage: line.allowNaturalLanguage !== false,
+    allowedSourceId: String(process.env.LINE_ALLOWED_SOURCE_ID || line.allowedSourceId || targetId || "").trim()
+  };
+}
+
+function publicLineConfig(config) {
+  return {
+    enabled: Boolean(config.enabled),
+    configured: Boolean(config.configured),
+    targetId: config.targetId || "",
+    publicBaseUrl: config.publicBaseUrl || "",
+    dailySummaryTime: config.dailySummaryTime || "",
+    timeZone: config.timeZone || "Asia/Bangkok",
+    sendOnManualUpdate: Boolean(config.sendOnManualUpdate),
+    allowNaturalLanguage: config.allowNaturalLanguage !== false,
+    webhookReady: Boolean(config.enabled && config.channelAccessToken && config.channelSecret && config.publicBaseUrl)
+  };
+}
+
 function sanitizeConfigForClient(config) {
   return {
     ...config,
@@ -474,6 +517,11 @@ function sanitizeConfigForClient(config) {
       ...config.telegram,
       botToken: config.telegram.botToken ? "__CONFIGURED__" : "",
       webhookSecret: config.telegram.webhookSecret ? "__CONFIGURED__" : ""
+    } : undefined,
+    line: config.line ? {
+      ...config.line,
+      channelAccessToken: config.line.channelAccessToken ? "__CONFIGURED__" : "",
+      channelSecret: config.line.channelSecret ? "__CONFIGURED__" : ""
     } : undefined
   };
 }
@@ -520,6 +568,18 @@ function mergeConfigForSave(existingConfig, nextConfig) {
     }
     if (merged.telegram.webhookSecret === "__CONFIGURED__") {
       merged.telegram.webhookSecret = existingConfig.telegram?.webhookSecret || "";
+    }
+  }
+  if (existingConfig.line || nextConfig.line) {
+    merged.line = {
+      ...(existingConfig.line || {}),
+      ...(nextConfig.line || {})
+    };
+    if (merged.line.channelAccessToken === "__CONFIGURED__") {
+      merged.line.channelAccessToken = existingConfig.line?.channelAccessToken || "";
+    }
+    if (merged.line.channelSecret === "__CONFIGURED__") {
+      merged.line.channelSecret = existingConfig.line?.channelSecret || "";
     }
   }
   if (existingConfig.allowedEmails || nextConfig.allowedEmails) {
@@ -1700,6 +1760,7 @@ async function loadTaskMonitor(sheetUrl, auth = null, options = {}) {
   const warnings = [];
   const sources = [];
   const telegram = publicTelegramConfig(await getTelegramConfig());
+  const line = publicLineConfig(await getLineConfig());
 
   let dashboard = null;
   let manualRows = [];
@@ -1903,7 +1964,8 @@ async function loadTaskMonitor(sheetUrl, auth = null, options = {}) {
     tasks,
     sources,
     warnings,
-    telegram
+    telegram,
+    line
   };
 }
 
@@ -2355,20 +2417,95 @@ async function sendTelegramMessage(text, config = null, chatId = "") {
   return { chunks: chunks.length, results };
 }
 
-async function sendSubjectUpdateTelegram(sheetUrl, payload, result) {
-  const telegram = await getTelegramConfig();
-  if (!telegram.enabled || !telegram.configured || !telegram.sendOnManualUpdate) return null;
+function buildSubjectUpdateMessage(payload) {
   const statusTypeLabel = payload.statusType === "clip"
     ? "ลิงก์คลิป"
     : payload.statusType === "document" ? "เอกสาร" : "สถานะ";
-  const message = [
+  return [
     "อัปเดตสถานะงาน",
     `ตำแหน่ง: ${payload.position || "-"}`,
     `ลำดับ: ${payload.order || "-"}`,
     `วิชา: ${payload.title || "-"}`,
     `สถานะใหม่ (${statusTypeLabel}): ${payload.status || "-"}`
   ].join("\n");
+}
+
+async function sendSubjectUpdateTelegram(sheetUrl, payload, result) {
+  const telegram = await getTelegramConfig();
+  if (!telegram.enabled || !telegram.configured || !telegram.sendOnManualUpdate) return null;
+  const message = buildSubjectUpdateMessage(payload);
   return sendTelegramMessage(message, telegram);
+}
+
+function verifyLineSignature(rawBody, signature, config) {
+  if (!config.channelSecret || !signature) return false;
+  const expected = createHmac("sha256", config.channelSecret)
+    .update(rawBody, "utf8")
+    .digest("base64");
+  const actualBuffer = Buffer.from(signature);
+  const expectedBuffer = Buffer.from(expected);
+  return actualBuffer.length === expectedBuffer.length && timingSafeEqual(actualBuffer, expectedBuffer);
+}
+
+async function callLineApi(path, payload, config = null) {
+  const line = config || await getLineConfig();
+  if (!line.channelAccessToken) throw new Error("LINE channel access token is not configured");
+  const response = await fetch(`https://api.line.me${path}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${line.channelAccessToken}`
+    },
+    body: JSON.stringify(payload)
+  });
+  const text = await response.text();
+  let json = {};
+  if (text) {
+    try {
+      json = JSON.parse(text);
+    } catch {
+      json = { message: text };
+    }
+  }
+  if (!response.ok) {
+    throw new Error(json.message || `LINE API ${path} failed (${response.status})`);
+  }
+  return json;
+}
+
+function buildLineTextMessages(text) {
+  return splitTelegramText(text)
+    .slice(0, 5)
+    .map(chunk => ({ type: "text", text: chunk.slice(0, 4900) }));
+}
+
+async function pushLineMessage(text, config = null, targetId = "") {
+  const line = config || await getLineConfig();
+  const to = String(targetId || line.targetId || "").trim();
+  if (!line.channelAccessToken || !to) throw new Error("LINE token/target id is not configured");
+  return callLineApi("/v2/bot/message/push", {
+    to,
+    messages: buildLineTextMessages(text)
+  }, line);
+}
+
+async function replyLineMessage(replyToken, text, config = null) {
+  const line = config || await getLineConfig();
+  if (!replyToken) throw new Error("LINE reply token is required");
+  return callLineApi("/v2/bot/message/reply", {
+    replyToken,
+    messages: buildLineTextMessages(text)
+  }, line);
+}
+
+async function sendSubjectUpdateLine(sheetUrl, payload, result) {
+  const line = await getLineConfig();
+  if (!line.enabled || !line.channelAccessToken || !line.targetId || !line.sendOnManualUpdate) return null;
+  return pushLineMessage(buildSubjectUpdateMessage(payload), line);
+}
+
+function lineEventSourceId(source = {}) {
+  return String(source.groupId || source.roomId || source.userId || "").trim();
 }
 
 async function setTelegramWebhookFromConfig() {
@@ -2430,6 +2567,26 @@ function startTelegramDailyScheduler() {
       const monitor = await loadTaskMonitor(config.sheetUrl, await getBackgroundSheetAuth(), { includeLocalAudit: true });
       await sendTelegramMessage(buildTelegramSummaryMessage(monitor, { timeZone: telegram.timeZone }), telegram);
       await writeFile(taskStatePath, JSON.stringify({ ...state, lastTelegramDailySummaryKey: sendKey, lastTelegramDailySummaryAt: new Date().toISOString() }, null, 2), "utf8");
+    } catch {}
+  }, 60_000);
+  timer.unref?.();
+}
+
+function startLineDailyScheduler() {
+  const timer = setInterval(async () => {
+    try {
+      const line = await getLineConfig();
+      if (!line.enabled || !line.channelAccessToken || !line.targetId || !line.dailySummaryTime) return;
+      const now = getZonedDateParts(line.timeZone);
+      if (now.timeKey !== line.dailySummaryTime) return;
+      const state = await readJson(taskStatePath, {});
+      const sendKey = `${now.dateKey}:${line.dailySummaryTime}`;
+      if (state.lastLineDailySummaryKey === sendKey) return;
+      const config = await readAppConfig();
+      if (!config.sheetUrl) return;
+      const monitor = await loadTaskMonitor(config.sheetUrl, await getBackgroundSheetAuth(), { includeLocalAudit: true });
+      await pushLineMessage(buildTelegramSummaryMessage(monitor, { timeZone: line.timeZone }), line);
+      await writeFile(taskStatePath, JSON.stringify({ ...state, lastLineDailySummaryKey: sendKey, lastLineDailySummaryAt: new Date().toISOString() }, null, 2), "utf8");
     } catch {}
   }, 60_000);
   timer.unref?.();
@@ -3118,6 +3275,45 @@ async function handleApi(req, res, url) {
     return true;
   }
 
+  if (url.pathname === "/api/line/webhook" && req.method === "POST") {
+    const line = await getLineConfig();
+    const rawBody = await readRequestText(req);
+    if (!line.enabled || !line.channelAccessToken || !line.channelSecret || !line.allowNaturalLanguage) {
+      sendJson(res, 200, { ok: true, ignored: true });
+      return true;
+    }
+
+    const signature = String(req.headers["x-line-signature"] || "");
+    if (!verifyLineSignature(rawBody, signature, line)) {
+      sendJson(res, 403, { ok: false, error: "Invalid LINE signature" });
+      return true;
+    }
+
+    const update = rawBody ? JSON.parse(rawBody) : {};
+    const events = Array.isArray(update.events) ? update.events : [];
+    for (const event of events) {
+      const text = String(event.message?.text || "").trim();
+      const sourceId = lineEventSourceId(event.source);
+      if (event.type !== "message" || event.message?.type !== "text" || !event.replyToken || !text) continue;
+      if (line.allowedSourceId && sourceId && sourceId !== line.allowedSourceId) continue;
+
+      try {
+        const config = await readAppConfig();
+        const sheetUrl = config.sheetUrl || "";
+        if (!sheetUrl) throw new Error("ยังไม่ได้ตั้งค่า Google Sheet URL");
+        const monitor = await loadTaskMonitor(sheetUrl, await getBackgroundSheetAuth(), { includeLocalAudit: true });
+        const answer = answerTelegramQuestion(text, monitor);
+        await replyLineMessage(event.replyToken, answer, line);
+      } catch (error) {
+        try {
+          await replyLineMessage(event.replyToken, `ตอบคำถามไม่สำเร็จ: ${error.message}`, line);
+        } catch {}
+      }
+    }
+    sendJson(res, 200, { ok: true, events: events.length });
+    return true;
+  }
+
   if (url.pathname.startsWith("/api/telegram/webhook/") && req.method === "POST") {
     const telegram = await getTelegramConfig();
     const pathSecret = decodeURIComponent(url.pathname.split("/").pop() || "");
@@ -3202,6 +3398,46 @@ async function handleApi(req, res, url) {
     }
     const sent = await sendTelegramMessage(`ทดสอบระบบแจ้งเตือนซุนวู\nเวลา: ${formatThaiDateTimeText(new Date(), telegram.timeZone)}`, telegram);
     sendJson(res, 200, { ok: true, sent, telegram: publicTelegramConfig(telegram) });
+    return true;
+  }
+
+  if (url.pathname === "/api/line/send-summary" && req.method === "POST") {
+    const body = await readRequestJson(req);
+    const config = await readAppConfig();
+    const sheetUrl = body.sheetUrl || config.sheetUrl;
+    if (!sheetUrl || typeof sheetUrl !== "string") {
+      sendJson(res, 400, { ok: false, error: "sheetUrl is required" });
+      return true;
+    }
+    const line = await getLineConfig();
+    if (!line.enabled || !line.channelAccessToken || !line.targetId) {
+      sendJson(res, 400, { ok: false, error: "LINE is not enabled or configured" });
+      return true;
+    }
+    const monitor = await loadTaskMonitor(sheetUrl, await getSheetAuth(req), { includeLocalAudit: body.includeLocalAudit !== false });
+    const sent = await pushLineMessage(buildTelegramSummaryMessage(monitor, { timeZone: line.timeZone }), line);
+    sendJson(res, 200, { ok: true, sent, line: publicLineConfig(line), monitor: { summary: monitor.summary, generatedAt: monitor.generatedAt } });
+    return true;
+  }
+
+  if (url.pathname === "/api/line/test" && req.method === "POST") {
+    const line = await getLineConfig();
+    if (!line.enabled || !line.channelAccessToken || !line.targetId) {
+      sendJson(res, 400, { ok: false, error: "LINE is not enabled or configured" });
+      return true;
+    }
+    const sent = await pushLineMessage(`ทดสอบระบบแจ้งเตือนซุนวูผ่าน LINE\nเวลา: ${formatThaiDateTimeText(new Date(), line.timeZone)}`, line);
+    sendJson(res, 200, { ok: true, sent, line: publicLineConfig(line) });
+    return true;
+  }
+
+  if (url.pathname === "/api/line/status" && req.method === "GET") {
+    const line = await getLineConfig();
+    sendJson(res, 200, {
+      ok: true,
+      line: publicLineConfig(line),
+      webhookUrl: line.publicBaseUrl ? `${line.publicBaseUrl}/api/line/webhook` : ""
+    });
     return true;
   }
 
@@ -3362,6 +3598,7 @@ async function handleApi(req, res, url) {
       ? await updateSubjectStatusViaAppsScript(sheetUrl, body, writer)
       : await updateSubjectStatus(sheetUrl, body, await getSheetAuth(req));
     sendSubjectUpdateTelegram(sheetUrl, body, result).catch(() => {});
+    sendSubjectUpdateLine(sheetUrl, body, result).catch(() => {});
     sendJson(res, 200, { ok: true, ...result });
     return true;
   }
@@ -3718,3 +3955,4 @@ createServer(async (req, res) => {
 });
 
 startTelegramDailyScheduler();
+startLineDailyScheduler();
