@@ -2251,7 +2251,8 @@ function answerTelegramQuestion(text, monitor) {
   // ให้ตอบสรุปกลุ่มก่อนค้นราย subject กันไม่ให้คำในชื่อวิชาบางคำไปแย่งคำตอบ
   const positionIntent = wantsGroupListing ||
     /ล่าสุด|วันไหน|กี่วัน|อัปเดต|อัพเดต|ลงเมื่อ|เงียบ|ลงล่าสุด|โพสต์ล่าสุด/.test(query) ||
-    /เหลือ|ค้าง|คืบหน้า|กี่วิชา|สถานะ|มีคลิป|ขาด|เปอร์เซ็น|ครบ/.test(query);
+    /เหลือ|ค้าง|คืบหน้า|กี่วิชา|สถานะ|มีคลิป|ขาด|เปอร์เซ็น|ครบ/.test(query) ||
+    /ยังไม่ลง|ไม่ลงลิงก์|ไม่ลงลิงค์|ลงลิงก์อะไร|ลงลิงค์อะไร|รายวิชาที่ยังไม่ลง|วิชาที่ยังไม่ลง/.test(query);
   if (position && positionIntent) {
     return answerPositionQuestion(query, position, monitor);
   }
