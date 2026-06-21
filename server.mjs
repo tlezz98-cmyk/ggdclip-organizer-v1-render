@@ -1547,6 +1547,31 @@ function normalizeNoSpace(value) {
   return normalizeBotText(value).replace(/\s+/g, "");
 }
 
+// ใช้จับคู่ชื่อกลุ่ม/ตำแหน่งแบบยืดหยุ่น: ตัดวรรค จุด ขีด วงเล็บ และเครื่องหมายอื่น
+// เพื่อให้ "กกตการเงิน" จับกับ "กกต. การเงิน" ได้
+function normalizeMatchKey(value) {
+  return normalizeBotText(value).replace(/[\s.\-_,/()"'`]+/g, "");
+}
+
+// ความยาว substring ร่วมที่ยาวสุด ใช้จับคู่ชื่อวิชาภาษาไทยที่พิมพ์ติดกันไม่มีวรรค
+function longestCommonSubstringLen(a, b) {
+  if (!a || !b) return 0;
+  const m = a.length, n = b.length;
+  let prev = new Array(n + 1).fill(0);
+  let best = 0;
+  for (let i = 1; i <= m; i++) {
+    const cur = new Array(n + 1).fill(0);
+    for (let j = 1; j <= n; j++) {
+      if (a[i - 1] === b[j - 1]) {
+        cur[j] = prev[j - 1] + 1;
+        if (cur[j] > best) best = cur[j];
+      }
+    }
+    prev = cur;
+  }
+  return best;
+}
+
 function priorityRank(priority) {
   return { urgent: 0, high: 1, normal: 2, low: 3 }[priority] ?? 4;
 }
@@ -1954,14 +1979,15 @@ function buildTelegramHelpMessage() {
 }
 
 function findPositionFromQuestion(text, monitor) {
-  const normalized = normalizeNoSpace(text);
+  const normalized = normalizeMatchKey(text);
   if (!normalized) return null;
   return [...(monitor.positions || [])]
     .sort((a, b) => String(b.name || "").length - String(a.name || "").length)
     .find(position => {
-      const name = normalizeNoSpace(position.name);
-      const group = normalizeNoSpace(position.groupLabel);
-      return (name && normalized.includes(name)) || (group && normalized.includes(group));
+      const name = normalizeMatchKey(position.name);
+      const group = normalizeMatchKey(position.groupLabel);
+      return (name && name.length >= 2 && normalized.includes(name)) ||
+        (group && group.length >= 2 && normalized.includes(group));
     }) || null;
 }
 
@@ -2051,6 +2077,14 @@ function searchSubjectsByQuestion(text, monitor, limit = 20) {
           titleScore += 80;
         }
       }
+      // จับคู่แบบยืดหยุ่นสำหรับชื่อวิชาไทยที่พิมพ์ติดกัน (ไม่มีวรรค) ด้วย substring ร่วมที่ยาวสุด
+      if (titleScore === 0 && compactQuery && compactQuery.length >= 6) {
+        const lcs = longestCommonSubstringLen(compactQuery, titleCompact);
+        if (lcs >= 6) {
+          score += lcs;
+          titleScore += lcs;
+        }
+      }
       for (const term of terms) {
         const compactTerm = normalizeNoSpace(term);
         if (!compactTerm) continue;
@@ -2091,12 +2125,35 @@ function answerSubjectQuestion(query, matches) {
   const clipPending = focusedMatches.filter(subject => subject.needsClipLink).length;
   const docPending = focusedMatches.filter(subject => subject.needsDocument).length;
   const clipFound = focusedMatches.filter(subject => subject.hasClip).length;
+  const total = focusedMatches.length;
   const title = focusedMatches[0]?.title || "วิชาที่ค้นหา";
+
+  // ตอบตรงคำถามเป็นประโยคแรก (ภาษามนุษย์) ตามเจตนาที่เด่นที่สุด
+  const wantsDoc = /เอกสาร|ชีท|ไฟล์|pdf|ครบไหม|ครบมั้ย/.test(query);
+  const wantsLink = /ลงลิงก|ลงลิงค|ลงหรือยัง|ลงยัง|ลงรึยัง|ลงแล้วยัง|ลงไหม|ลงมั้ย|โพสต์/.test(query);
+  let headline;
+  if (wantsClip && !wantsLink) {
+    headline = clipFound >= total
+      ? `มีคลิปในระบบครบทั้ง ${total} รายการ`
+      : clipFound > 0
+        ? `มีคลิปในระบบ ${clipFound} จาก ${total} รายการ`
+        : `ยังไม่พบคลิปในระบบ (${total} รายการ)`;
+  } else if (wantsDoc && !wantsLink) {
+    headline = docPending === 0
+      ? `เอกสารครบแล้วทั้ง ${total} รายการ`
+      : `เอกสารยังไม่ครบ ค้าง ${docPending} จาก ${total} รายการ`;
+  } else {
+    headline = clipPending === 0
+      ? `ลงลิงก์ครบแล้วทั้ง ${total} กลุ่ม/ตำแหน่ง`
+      : `ยังไม่ลงลิงก์ ${clipPending} จาก ${total} กลุ่ม/ตำแหน่ง (ลงแล้ว ${clipDone})`;
+  }
+
   const lines = [
     `วิชา: ${title}`,
-    `พบในระบบ ${focusedMatches.length} กลุ่ม/ตำแหน่ง`,
+    headline,
+    `พบในระบบ ${total} กลุ่ม/ตำแหน่ง`,
     `ลงลิงก์แล้ว ${clipDone} | ยังไม่ลงลิงก์ ${clipPending} | เอกสารค้าง ${docPending}`,
-    wantsClip ? `คลิปในระบบ: พบ ${clipFound} จาก ${focusedMatches.length} รายการ` : "",
+    wantsClip ? `คลิปในระบบ: พบ ${clipFound} จาก ${total} รายการ` : "",
     "",
     wantsGroups || wantsPendingGroups ? "กลุ่ม/ตำแหน่งที่เกี่ยวข้อง:" : "สถานะรายกลุ่ม:"
   ].filter(Boolean);
@@ -2145,8 +2202,21 @@ function answerPositionQuestion(query, position, monitor) {
   const latest = position.latestUpdate
     ? `${formatShortThaiDate(position.latestUpdate)} (${formatUpdateAge(position.latestUpdate)})`
     : "ยังไม่มีข้อมูลล่าสุด";
+
+  // ประโยคแรกตอบตรงคำถามที่ถามถึงกลุ่มนี้
+  const wantsDate = /ล่าสุด|วันไหน|กี่วัน|อัปเดต|อัพเดต|ลงเมื่อ|โพสต์|เงียบ/.test(query);
+  let headline = "";
+  if (wantsClip && !wantsDate) {
+    headline = `มีคลิปรอลงลิงก์ ${position.pendingWithClip || 0} | ค้างลงลิงก์รวม ${position.missingCount || position.missing || 0} วิชา`;
+  } else if (wantsDate) {
+    headline = position.latestUpdate
+      ? `ลงล่าสุด ${latest}${position.latestUpdateItem ? ` - ${position.latestUpdateItem}` : ""}`
+      : "ยังไม่มีบันทึกการลงลิงก์ล่าสุดในกลุ่มนี้";
+  }
+
   const lines = [
     `${position.name}`,
+    headline,
     `สถานะคอร์ส: ${String(position.closedCourse || "").toLowerCase() === "true" ? "ปิดคอร์สแล้ว" : "ยังเปิดอยู่"}`,
     `คืบหน้า: ${position.percent || "0%"}`,
     `ลงแล้ว: ${position.done || 0}/${position.total || 0} | ยังไม่ลงลิงก์: ${position.missingCount || position.missing || 0}`,
@@ -2174,41 +2244,35 @@ function answerTelegramQuestion(text, monitor) {
     return buildTelegramHelpMessage();
   }
 
+  const position = findPositionFromQuestion(query, monitor);
+  // เจตนา "กลุ่มนี้มีวิชาอะไรบ้าง / รายวิชาในกลุ่ม"
+  const wantsGroupListing = /มีวิชาอะไร|มีวิชาไหน|วิชาอะไรบ้าง|รายวิชา|วิชาทั้งหมด|มีกี่วิชา|วิชาในกลุ่ม|ในกลุ่มนี้มี|กลุ่มนี้มี/.test(query);
+  // ถ้าระบุชื่อกลุ่ม/ตำแหน่งชัดเจน + เป็นคำถามระดับกลุ่ม (วันที่ล่าสุด, งานค้าง, มีคลิป, รายวิชา)
+  // ให้ตอบสรุปกลุ่มก่อนค้นราย subject กันไม่ให้คำในชื่อวิชาบางคำไปแย่งคำตอบ
+  const positionIntent = wantsGroupListing ||
+    /ล่าสุด|วันไหน|กี่วัน|อัปเดต|อัพเดต|ลงเมื่อ|เงียบ|ลงล่าสุด|โพสต์ล่าสุด/.test(query) ||
+    /เหลือ|ค้าง|คืบหน้า|กี่วิชา|สถานะ|มีคลิป|ขาด|เปอร์เซ็น|ครบ/.test(query);
+  if (position && positionIntent) {
+    return answerPositionQuestion(query, position, monitor);
+  }
+
   const subjectMatches = searchSubjectsByQuestion(query, monitor, 30);
   if (subjectMatches.length) {
     return answerSubjectQuestion(query, subjectMatches);
   }
 
-  if (/ขาด.*อัปเดต|ขาด.*อัพเดต|ไม่อัปเดต|ไม่อัพเดต|เงียบ|กี่วัน|ล่าสุดวันไหน|อัปเดตล่าสุด|อัพเดตล่าสุด/.test(query)) {
-    return answerStaleGroupsQuestion(monitor);
-  }
-
-  const position = findPositionFromQuestion(query, monitor);
+  // ระบุชื่อกลุ่มแต่ไม่เข้าเงื่อนไขข้างบน (เช่นถามลอยๆ ชื่อกลุ่ม) → สรุปกลุ่มนั้น
   if (position) {
     return answerPositionQuestion(query, position, monitor);
-    const positionTasks = (monitor.tasks || []).filter(task => task.position === position.name);
-    const clipReady = positionTasks.filter(task => task.type === "clip-ready").slice(0, 8);
-    const missing = position.missingCount || positionTasks.filter(task => task.type !== "document-missing").length;
-    const lines = [
-      `${position.name}`,
-      `คืบหน้า: ${position.percent || "0%"}`,
-      `ค้างลงลิงก์คลิป: ${missing} วิชา`,
-      `มีคลิปรอตรวจ/ลงลิงก์: ${position.pendingWithClip || clipReady.length}`,
-      `เอกสารค้าง: ${positionTasks.filter(task => task.type === "document-missing").length}`,
-      ""
-    ];
-    const rows = clipReady.length ? clipReady : positionTasks.slice(0, 8);
-    if (rows.length) {
-      lines.push("รายการสำคัญ:");
-      rows.forEach((task, index) => lines.push(formatTaskLine(task, index + 1)));
-    } else {
-      lines.push("ยังไม่พบรายการค้างของตำแหน่งนี้จากข้อมูลล่าสุด");
-    }
-    if (position.facebookUrl) {
-      lines.push("");
-      lines.push(`กลุ่ม: ${position.facebookUrl}`);
-    }
-    return lines.join("\n").slice(0, 3900);
+  }
+
+  // คำว่า "สรุป/ภาพรวม" ให้ความสำคัญก่อนงานด่วน
+  if (/สรุป|ภาพรวม|dashboard/.test(query)) {
+    return buildTelegramSummaryMessage(monitor);
+  }
+
+  if (/ขาด.*อัปเดต|ขาด.*อัพเดต|ไม่อัปเดต|ไม่อัพเดต|เงียบ|กี่วัน|ล่าสุดวันไหน|อัปเดตล่าสุด|อัพเดตล่าสุด|ลงล่าสุด|โพสต์ล่าสุด/.test(query)) {
+    return answerStaleGroupsQuestion(monitor);
   }
 
   if (/ด่วน|ก่อน|วันนี้|ควรทำ|ทำอะไรก่อน|priority/.test(query)) {
@@ -3135,6 +3199,26 @@ async function handleApi(req, res, url) {
     }
     const sent = await sendTelegramMessage(`ทดสอบระบบแจ้งเตือนซุนวู\nเวลา: ${formatThaiDateTimeText(new Date(), telegram.timeZone)}`, telegram);
     sendJson(res, 200, { ok: true, sent, telegram: publicTelegramConfig(telegram) });
+    return true;
+  }
+
+  // ทดสอบคำตอบภาษามนุษย์โดยไม่ส่งเข้า Telegram (ใช้ตรวจ answerTelegramQuestion)
+  if (url.pathname === "/api/telegram/ask" && req.method === "POST") {
+    const body = await readRequestJson(req);
+    const text = String(body.q || body.text || "").trim();
+    if (!text) {
+      sendJson(res, 400, { ok: false, error: "q is required" });
+      return true;
+    }
+    const config = await readAppConfig();
+    const sheetUrl = body.sheetUrl || config.sheetUrl;
+    if (!sheetUrl || typeof sheetUrl !== "string") {
+      sendJson(res, 400, { ok: false, error: "sheetUrl is required" });
+      return true;
+    }
+    const monitor = await loadTaskMonitor(sheetUrl, await getSheetAuth(req), { includeLocalAudit: body.includeLocalAudit !== false });
+    const answer = answerTelegramQuestion(text, monitor);
+    sendJson(res, 200, { ok: true, q: text, answer });
     return true;
   }
 
