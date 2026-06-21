@@ -14,6 +14,8 @@ const secureCookie = process.env.COOKIE_SECURE === "1" || process.env.NODE_ENV =
 const configPath = join(root, "config.json");
 const defaultConfigPath = join(root, "config.online.json");
 const indexPath = join(root, ".scan-index.json");
+const taskStatePath = join(root, ".task-monitor-state.json");
+const localDataRoots = [root, resolve(root, "..")];
 const videoExtensions = new Set([".mp4", ".mov", ".mkv", ".avi", ".m4v"]);
 const summaryPositionGid = "1155912574";
 const manualEntryGid = "2021660849";
@@ -415,6 +417,44 @@ function publicAppsScriptStatusWriterConfig(config) {
   };
 }
 
+async function getTelegramConfig() {
+  const config = await readAppConfig();
+  const telegram = config.telegram || {};
+  const botToken = process.env.TELEGRAM_BOT_TOKEN || telegram.botToken || "";
+  const chatId = process.env.TELEGRAM_CHAT_ID || telegram.chatId || "";
+  const publicBaseUrl = process.env.PUBLIC_BASE_URL || process.env.RENDER_EXTERNAL_URL || telegram.publicBaseUrl || renderBaseUrl || "";
+  const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET || telegram.webhookSecret || "";
+  const dailySummaryTime = process.env.TELEGRAM_DAILY_SUMMARY_TIME || telegram.dailySummaryTime || "";
+  const timeZone = process.env.TELEGRAM_TIME_ZONE || telegram.timeZone || "Asia/Bangkok";
+  return {
+    enabled: String(process.env.TELEGRAM_ENABLED || telegram.enabled || "").toLowerCase() === "true" || telegram.enabled === true,
+    configured: Boolean(botToken && chatId),
+    botToken,
+    chatId: String(chatId || "").trim(),
+    publicBaseUrl: String(publicBaseUrl || "").replace(/\/+$/, ""),
+    webhookSecret: String(webhookSecret || "").trim(),
+    dailySummaryTime: String(dailySummaryTime || "").trim(),
+    timeZone,
+    sendOnManualUpdate: telegram.sendOnManualUpdate === true || String(process.env.TELEGRAM_SEND_ON_MANUAL_UPDATE || "").toLowerCase() === "true",
+    allowNaturalLanguage: telegram.allowNaturalLanguage !== false,
+    allowedChatId: String(process.env.TELEGRAM_ALLOWED_CHAT_ID || telegram.allowedChatId || chatId || "").trim()
+  };
+}
+
+function publicTelegramConfig(config) {
+  return {
+    enabled: Boolean(config.enabled),
+    configured: Boolean(config.configured),
+    chatId: config.chatId || "",
+    publicBaseUrl: config.publicBaseUrl || "",
+    dailySummaryTime: config.dailySummaryTime || "",
+    timeZone: config.timeZone || "Asia/Bangkok",
+    sendOnManualUpdate: Boolean(config.sendOnManualUpdate),
+    allowNaturalLanguage: config.allowNaturalLanguage !== false,
+    webhookReady: Boolean(config.configured && config.publicBaseUrl && config.webhookSecret)
+  };
+}
+
 function sanitizeConfigForClient(config) {
   return {
     ...config,
@@ -429,6 +469,11 @@ function sanitizeConfigForClient(config) {
     appsScriptStatusWriter: config.appsScriptStatusWriter ? {
       ...config.appsScriptStatusWriter,
       secret: config.appsScriptStatusWriter.secret ? "__CONFIGURED__" : ""
+    } : undefined,
+    telegram: config.telegram ? {
+      ...config.telegram,
+      botToken: config.telegram.botToken ? "__CONFIGURED__" : "",
+      webhookSecret: config.telegram.webhookSecret ? "__CONFIGURED__" : ""
     } : undefined
   };
 }
@@ -463,6 +508,18 @@ function mergeConfigForSave(existingConfig, nextConfig) {
     };
     if (merged.appsScriptStatusWriter.secret === "__CONFIGURED__") {
       merged.appsScriptStatusWriter.secret = existingConfig.appsScriptStatusWriter?.secret || "";
+    }
+  }
+  if (existingConfig.telegram || nextConfig.telegram) {
+    merged.telegram = {
+      ...(existingConfig.telegram || {}),
+      ...(nextConfig.telegram || {})
+    };
+    if (merged.telegram.botToken === "__CONFIGURED__") {
+      merged.telegram.botToken = existingConfig.telegram?.botToken || "";
+    }
+    if (merged.telegram.webhookSecret === "__CONFIGURED__") {
+      merged.telegram.webhookSecret = existingConfig.telegram?.webhookSecret || "";
     }
   }
   if (existingConfig.allowedEmails || nextConfig.allowedEmails) {
@@ -600,6 +657,12 @@ async function getSheetAuth(req) {
     }
   }
   return await requireAppSession(req) || getRequestAuth(req);
+}
+
+async function getBackgroundSheetAuth() {
+  const serviceConfig = await getServiceAccountConfig();
+  if (!serviceConfig.configured) return null;
+  return getServiceAccountAuth();
 }
 
 async function requireAllowedGoogleUser(token) {
@@ -764,45 +827,6 @@ function cleanCell(value) {
   return String(value || "").replace(/^\uFEFF/u, "").trim();
 }
 
-const STATUS_PENDING_LINK = "\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e25\u0e07\u0e25\u0e34\u0e07\u0e01\u0e4c";
-const STATUS_LINK_DONE = "\u0e25\u0e07\u0e25\u0e34\u0e07\u0e01\u0e4c\u0e41\u0e25\u0e49\u0e27";
-
-function repairMojibakeText(value) {
-  const text = cleanCell(value);
-  if (/[\uFFFD\x00-\x08\x0B\x0C\x0E-\x1F]/.test(text)) {
-    return "Apps Script writer is outdated or has broken Thai encoding. Please update Apps Script and deploy again.";
-  }
-  if (/[\uFFFD\x00-\x08\x0B\x0C\x0E-\x1F]/.test(text)) {
-    return "Apps Script writer ยังเป็นเวอร์ชันเก่าหรือ encoding เพี้ยน กรุณาอัปเดต Apps Script แล้ว Deploy ใหม่";
-  }
-  if (!text || !text.includes("à")) return text;
-  try {
-    return Buffer.from(text, "latin1").toString("utf8");
-  } catch {
-    return text;
-  }
-}
-
-function canonicalTwoStateStatus(value) {
-  const raw = cleanCell(value);
-  const repaired = repairMojibakeText(raw);
-  const normalized = `${raw} ${repaired}`.toLowerCase().replace(/\s+/g, "");
-  if (raw === STATUS_PENDING_LINK || repaired === STATUS_PENDING_LINK) return STATUS_PENDING_LINK;
-  if (raw === STATUS_LINK_DONE || repaired === STATUS_LINK_DONE) return STATUS_LINK_DONE;
-  if (normalized.includes("\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48") || normalized.includes("\u0e44\u0e21\u0e48\u0e25\u0e07")) return STATUS_PENDING_LINK;
-  if (normalized.includes("\u0e25\u0e07\u0e25\u0e34\u0e07\u0e01\u0e4c\u0e41\u0e25\u0e49\u0e27") || normalized.includes("\u0e25\u0e07\u0e25\u0e34\u0e07\u0e04\u0e4c\u0e41\u0e25\u0e49\u0e27") || normalized.includes("\u0e25\u0e07\u0e41\u0e25\u0e49\u0e27")) return STATUS_LINK_DONE;
-  if (normalized.includes("ยังไม่") || normalized.includes("ไม่ลง") || normalized.includes("pending")) return "ยังไม่ลงลิงก์";
-  if (normalized.includes("ลงลิงก์แล้ว") || normalized.includes("ลงลิงค์แล้ว") || normalized.includes("ลงแล้ว") || normalized.includes("done") || normalized.includes("complete")) return "ลงลิงก์แล้ว";
-  return raw;
-}
-
-function stringifyAsciiJson(value) {
-  return JSON.stringify(value).replace(/[^\x00-\x7F]/g, char => {
-    const code = char.charCodeAt(0).toString(16).padStart(4, "0");
-    return `\\u${code}`;
-  });
-}
-
 function columnIndex(header, names) {
   const cleanHeader = header.map(cleanCell);
   for (const name of names) {
@@ -818,6 +842,12 @@ const clipLinkStatusHeaders = [
   "สถานะลงก์คลิป",
   "สถานะลงค์คลิป",
   "สถานะคลิป",
+  "สถานะ",
+  "สถานะลิงก์คลิป",
+  "สถานะลิงค์คลิป",
+  "สถานะลงก์คลิป",
+  "สถานะลงค์คลิป",
+  "สถานะคลิป",
   "สถานะ"
 ];
 
@@ -826,28 +856,12 @@ const documentStatusHeaders = [
   "สถานะลิงค์เอกสาร",
   "สถานะเอกสาร",
   "ลิงก์เอกสาร",
+  "ลิงค์เอกสาร",
+  "สถานะลิงก์เอกสาร",
+  "สถานะลิงค์เอกสาร",
+  "สถานะเอกสาร",
+  "ลิงก์เอกสาร",
   "ลิงค์เอกสาร"
-];
-
-const latestUpdateHeaders = [
-  "อัปเดตล่าสุด",
-  "อัพเดตล่าสุด",
-  "แก้ไขล่าสุด",
-  "ล่าสุด"
-];
-
-const latestUpdateItemHeaders = [
-  "รายการอัปเดตล่าสุด",
-  "รายการอัพเดตล่าสุด",
-  "วิชาที่อัปเดตล่าสุด",
-  "วิชาที่อัพเดตล่าสุด"
-];
-
-const updateHistoryHeaders = [
-  "ประวัติอัปเดต",
-  "ประวัติการอัปเดต",
-  "ประวัติอัพเดต",
-  "ประวัติการอัพเดต"
 ];
 
 function findHeaderIndex(rows, names) {
@@ -872,50 +886,6 @@ function normalizeSubjectKey(value) {
 
 function normalizeGroupKey(value) {
   return String(value || "").toLowerCase().replace(/\s+/g, " ").trim();
-}
-
-function parseUpdateHistoryEntries(value) {
-  const text = cleanCell(value);
-  if (!text) return [];
-  try {
-    const parsed = JSON.parse(text);
-    if (Array.isArray(parsed)) {
-      return parsed
-        .map(entry => ({
-          at: cleanCell(entry?.at),
-          type: cleanCell(entry?.type),
-          status: cleanCell(entry?.status),
-          title: cleanCell(entry?.title)
-        }))
-        .filter(entry => entry.at || entry.title || entry.status);
-    }
-  } catch {}
-  return text.split(/\r?\n/)
-    .map(line => cleanCell(line))
-    .filter(Boolean)
-    .map(line => ({ at: "", type: "", status: "", title: line }));
-}
-
-function buildUpdateHistoryValue(existingValue, nextEntry) {
-  const existingEntries = parseUpdateHistoryEntries(existingValue)
-    .filter(entry => entry && (entry.at || entry.title || entry.status));
-  const entries = isDuplicateHistoryEntry(nextEntry, existingEntries[0])
-    ? existingEntries
-    : [nextEntry, ...existingEntries];
-  return JSON.stringify(entries.slice(0, 5));
-}
-
-function isDuplicateHistoryEntry(a, b) {
-  if (!a || !b) return false;
-  const sameCore =
-    cleanCell(a.type) === cleanCell(b.type) &&
-    cleanCell(a.status) === cleanCell(b.status) &&
-    normalizeKey(a.title) === normalizeKey(b.title);
-  if (!sameCore) return false;
-  const firstTime = Date.parse(a.at || "");
-  const secondTime = Date.parse(b.at || "");
-  if (!Number.isFinite(firstTime) || !Number.isFinite(secondTime)) return true;
-  return Math.abs(firstTime - secondTime) <= 15_000;
 }
 
 const csvCache = new Map();
@@ -1050,7 +1020,7 @@ async function updateSubjectStatus(sheetUrl, payload, auth = null) {
   const spreadsheetId = extractSpreadsheetId(sheetUrl);
   if (!spreadsheetId) throw new Error("ไม่พบ spreadsheet id");
   const statusType = String(payload.statusType || "").trim();
-  const nextStatus = canonicalTwoStateStatus(payload.status);
+  const nextStatus = cleanCell(payload.status);
   if (!["clip", "document"].includes(statusType)) throw new Error("ประเภทสถานะไม่ถูกต้อง");
   if (!["ยังไม่ลงลิงก์", "ลงลิงก์แล้ว"].includes(nextStatus)) throw new Error("สถานะต้องเป็น ยังไม่ลงลิงก์ หรือ ลงลิงก์แล้ว เท่านั้น");
 
@@ -1062,9 +1032,6 @@ async function updateSubjectStatus(sheetUrl, payload, auth = null) {
   const subjectIndex = columnIndex(header, ["ชื่อวิชา/หัวข้อ"]);
   const statusIndex = columnIndex(header, clipLinkStatusHeaders);
   const documentStatusIndex = columnIndex(header, documentStatusHeaders);
-  let latestUpdateIndex = columnIndex(header, latestUpdateHeaders);
-  let latestUpdateItemIndex = columnIndex(header, latestUpdateItemHeaders);
-  let updateHistoryIndex = columnIndex(header, updateHistoryHeaders);
   const targetColumnIndex = statusType === "clip" ? statusIndex : documentStatusIndex;
   if (positionIndex < 0 || orderIndex < 0 || subjectIndex < 0) {
     throw new Error("ไม่พบคอลัมน์ตำแหน่ง/ลำดับ/ชื่อวิชาในชีต");
@@ -1076,28 +1043,15 @@ async function updateSubjectStatus(sheetUrl, payload, auth = null) {
   const position = cleanCell(payload.position);
   const order = cleanCell(payload.order);
   const title = cleanCell(payload.title);
-  const requestedRowNumber = Number(payload.rowNumber || 0);
   if (!position || !order || !title) throw new Error("ข้อมูลตำแหน่ง/ลำดับ/ชื่อวิชาไม่ครบ");
 
-  let matches = [];
-  if (Number.isInteger(requestedRowNumber) && requestedRowNumber >= 2 && requestedRowNumber <= rows.length) {
-    const row = rows[requestedRowNumber - 1] || [];
-    if (
-      sameSheetKey(row[positionIndex], position) &&
-      sameSheetKey(row[subjectIndex], title)
-    ) {
-      matches = [{ row, rowNumber: requestedRowNumber }];
-    }
-  }
-  if (!matches.length) {
-    matches = rows.slice(1)
+  const matches = rows.slice(1)
     .map((row, index) => ({ row, rowNumber: index + 2 }))
     .filter(({ row }) =>
       sameSheetKey(row[positionIndex], position) &&
       sameSheetKey(row[orderIndex], order) &&
       sameSheetKey(row[subjectIndex], title)
     );
-  }
 
   if (matches.length !== 1) {
     throw new Error(matches.length === 0
@@ -1108,37 +1062,7 @@ async function updateSubjectStatus(sheetUrl, payload, auth = null) {
   const sheetName = await fetchSheetTitleByGid(spreadsheetId, manualEntryGid, auth);
   const match = matches[0];
   const previousStatus = cleanCell(match.row[targetColumnIndex]);
-  if (latestUpdateIndex < 0) {
-    latestUpdateIndex = header.length;
-    await updateGoogleSheetCell(spreadsheetId, sheetName, 1, latestUpdateIndex, "อัปเดตล่าสุด", auth);
-    header.push("อัปเดตล่าสุด");
-  }
-  if (latestUpdateItemIndex < 0) {
-    latestUpdateItemIndex = header.length;
-    await updateGoogleSheetCell(spreadsheetId, sheetName, 1, latestUpdateItemIndex, "รายการอัปเดตล่าสุด", auth);
-    header.push("รายการอัปเดตล่าสุด");
-  }
-  if (updateHistoryIndex < 0) {
-    updateHistoryIndex = header.length;
-    await updateGoogleSheetCell(spreadsheetId, sheetName, 1, updateHistoryIndex, "ประวัติอัปเดต", auth);
-    header.push("ประวัติอัปเดต");
-  }
   const update = await updateGoogleSheetCell(spreadsheetId, sheetName, match.rowNumber, targetColumnIndex, nextStatus, auth);
-  const updatedAt = new Date().toISOString();
-  const latestUpdateItem = `${statusType === "clip" ? "ลิงก์คลิป" : "ลิงก์เอกสาร"}: ${nextStatus} · ${title}`;
-  const historyEntry = { at: updatedAt, type: statusType, status: nextStatus, title };
-  const updateHistory = buildUpdateHistoryValue(match.row[updateHistoryIndex], historyEntry);
-  let updatedCells = update.updatedCells || 0;
-  if (latestUpdateIndex >= 0) {
-    const latestUpdateResult = await updateGoogleSheetCell(spreadsheetId, sheetName, match.rowNumber, latestUpdateIndex, updatedAt, auth);
-    updatedCells += latestUpdateResult.updatedCells || 0;
-  }
-  if (latestUpdateItemIndex >= 0) {
-    const latestItemResult = await updateGoogleSheetCell(spreadsheetId, sheetName, match.rowNumber, latestUpdateItemIndex, latestUpdateItem, auth);
-    updatedCells += latestItemResult.updatedCells || 0;
-  }
-  const historyResult = await updateGoogleSheetCell(spreadsheetId, sheetName, match.rowNumber, updateHistoryIndex, updateHistory, auth);
-  updatedCells += historyResult.updatedCells || 0;
   return {
     spreadsheetId,
     gid: manualEntryGid,
@@ -1147,26 +1071,20 @@ async function updateSubjectStatus(sheetUrl, payload, auth = null) {
     statusType,
     previousStatus,
     status: nextStatus,
-    updatedAt,
-    latestUpdateItem,
-    updateHistory,
-    ...update,
-    updatedCells
+    ...update
   };
 }
 
 async function updateSubjectStatusViaAppsScript(sheetUrl, payload, writer) {
   if (!writer?.url) throw new Error("Apps Script status writer is not configured");
-  const forwardedPayload = {
-    ...payload,
-    status: canonicalTwoStateStatus(payload.status),
-    sheetUrl,
-    secret: writer.secret || ""
-  };
   const response = await fetch(writer.url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: stringifyAsciiJson(forwardedPayload)
+    body: JSON.stringify({
+      ...payload,
+      sheetUrl,
+      secret: writer.secret || ""
+    })
   });
   const text = await response.text();
   let json = {};
@@ -1176,8 +1094,7 @@ async function updateSubjectStatusViaAppsScript(sheetUrl, payload, writer) {
     throw new Error(`Apps Script did not return JSON (${response.status})`);
   }
   if (!response.ok || json.ok === false) {
-    const errorMessage = repairMojibakeText(json.error);
-    throw new Error(errorMessage || `Apps Script write failed (${response.status})`);
+    throw new Error(json.error || `Apps Script write failed (${response.status})`);
   }
   csvCache.clear();
   return {
@@ -1225,9 +1142,6 @@ async function loadManualRows(spreadsheetId, auth = null) {
   const linkIndex = columnIndex(header, ["ลิงก์โพสต์/กลุ่ม", "ลิงก์กลุ่ม", "Facebook"]);
   const noteIndex = columnIndex(header, ["หมายเหตุ"]);
   const clipStatusIndex = columnIndex(header, ["ลงคลิป"]);
-  const latestUpdateIndex = columnIndex(header, latestUpdateHeaders);
-  const latestUpdateItemIndex = columnIndex(header, latestUpdateItemHeaders);
-  const updateHistoryIndex = columnIndex(header, updateHistoryHeaders);
 
   if (positionIndex < 0 || subjectIndex < 0) {
     throw new Error("ไม่พบคอลัมน์ตำแหน่งหรือชื่อวิชา/หัวข้อในชีต");
@@ -1246,10 +1160,7 @@ async function loadManualRows(spreadsheetId, auth = null) {
       reusable: cleanCell(row[reusableIndex]),
       link: cleanCell(row[linkIndex]),
       note: cleanCell(row[noteIndex]),
-      clipStatus: cleanCell(row[clipStatusIndex]),
-      latestUpdate: cleanCell(row[latestUpdateIndex]),
-      latestUpdateItem: cleanCell(row[latestUpdateItemIndex]),
-      updateHistory: cleanCell(row[updateHistoryIndex])
+      clipStatus: cleanCell(row[clipStatusIndex])
     }));
 }
 
@@ -1265,41 +1176,6 @@ function buildGroupLinkMaps(manualRows) {
   return { byPosition, byGroup };
 }
 
-function buildLatestUpdateMap(manualRows) {
-  const byPosition = new Map();
-  for (const row of manualRows) {
-    const updatedAt = cleanCell(row.latestUpdate);
-    const history = parseUpdateHistoryEntries(row.updateHistory);
-    if (updatedAt && !history.length) {
-      history.unshift({
-        at: updatedAt,
-        type: "",
-        status: "",
-        title: cleanCell(row.latestUpdateItem) || row.title || ""
-      });
-    }
-    if (!row.position || !history.length) continue;
-    const existing = byPosition.get(row.position) || { history: [] };
-    existing.history.push(...history);
-    byPosition.set(row.position, existing);
-  }
-  for (const [position, value] of byPosition.entries()) {
-    const history = value.history
-      .map(entry => ({ ...entry, timestamp: Date.parse(entry.at || "") }))
-      .filter(entry => Number.isFinite(entry.timestamp) || entry.title || entry.status)
-      .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
-      .slice(0, 5);
-    const latest = history[0] || {};
-    byPosition.set(position, {
-      updatedAt: latest.at || "",
-      timestamp: latest.timestamp || 0,
-      item: latest.title || "",
-      history
-    });
-  }
-  return byPosition;
-}
-
 async function loadDashboard(sheetUrl, auth = null) {
   const spreadsheetId = extractSpreadsheetId(sheetUrl);
   if (!spreadsheetId) throw new Error("ไม่พบ spreadsheet id");
@@ -1309,7 +1185,6 @@ async function loadDashboard(sheetUrl, auth = null) {
     loadManualRows(spreadsheetId, auth)
   ]);
   const groupLinks = buildGroupLinkMaps(manualRows);
-  const latestUpdates = buildLatestUpdateMap(manualRows);
   const rows = parseCsv(dashboardCsv);
   const headerIndex = findHeaderIndex(rows, ["ตำแหน่ง", "วิชาทั้งหมด", "% สำเร็จ"]);
   if (headerIndex < 0) throw new Error("ไม่พบตารางสรุปตามตำแหน่งใน Dashboard");
@@ -1329,7 +1204,6 @@ async function loadDashboard(sheetUrl, auth = null) {
       const name = cleanCell(row[positionIndex]);
       const groupLabel = cleanCell(row[groupLinkIndex]);
       const groupKey = normalizeGroupKey(groupLabel);
-      const latestUpdate = latestUpdates.get(name) || {};
       const facebookUrl =
         (isUrl(groupLabel) ? groupLabel : "") ||
         groupLinks.byPosition.get(name) ||
@@ -1343,9 +1217,6 @@ async function loadDashboard(sheetUrl, auth = null) {
         percent: cleanCell(row[percentIndex]),
         groupLabel,
         facebookUrl,
-        latestUpdate: latestUpdate.updatedAt || "",
-        latestUpdateItem: latestUpdate.item || "",
-        updateHistory: latestUpdate.history || [],
         closedCourse: cleanCell(row[closedCourseIndex]) || "FALSE"
       };
     })
@@ -1473,14 +1344,13 @@ async function loadSubjects(sheetUrl, positionName, auth = null) {
 
   const allPositions = positionName === "__ALL__";
   const subjects = rows.slice(1)
-    .map((row, index) => ({ row, rowNumber: index + 2 }))
-    .filter(({ row }) => allPositions || (row[positionIndex] || "").trim() === positionName)
-    .filter(({ row }) => (row[subjectIndex] || "").trim())
-    .map(({ row, rowNumber }) => ({
-      rowNumber,
+    .filter(row => allPositions || (row[positionIndex] || "").trim() === positionName)
+    .filter(row => (row[subjectIndex] || "").trim())
+    .map((row, index) => ({
+      rowNumber: index + 2,
       position: (row[positionIndex] || "").trim(),
       group: row[groupIndex] || "",
-      order: row[orderIndex] || String(rowNumber - 1),
+      order: allPositions ? String(index + 1) : row[orderIndex] || String(index + 1),
       title: (row[subjectIndex] || "").trim(),
       sheetStatus: row[statusIndex] || "",
       documentStatus: row[documentStatusIndex] || "",
@@ -1497,6 +1367,628 @@ async function loadSubjects(sheetUrl, positionName, auth = null) {
     count: subjects.length,
     subjects
   };
+}
+
+function statusKind(value) {
+  const text = cleanCell(value);
+  if (!text) return "pending";
+  if (/^(true|yes|done|complete)$/i.test(text)) return "done";
+  if (/ยัง|ไม่|pending|todo|รอ|ต้อง/i.test(text)) return "pending";
+  if (/ลง.*แล้ว|เรียบร้อย|done|complete/i.test(text)) return "done";
+  return "review";
+}
+
+function clipFlagKind(value) {
+  const text = cleanCell(value);
+  if (!text) return "";
+  if (/ลง.*คลิป.*แล้ว|ลงคลิปแล้ว|done|complete/i.test(text)) return "done";
+  if (/ยัง|ไม่|รอ|ต้อง/i.test(text)) return "pending";
+  return "review";
+}
+
+function compactTaskKey(...parts) {
+  return parts.map(part => cleanCell(part).replace(/\s+/g, " ").toLowerCase()).join("|");
+}
+
+function normalizeBotText(value) {
+  return String(value || "")
+    .replace(/@\w+/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function normalizeNoSpace(value) {
+  return normalizeBotText(value).replace(/\s+/g, "");
+}
+
+function priorityRank(priority) {
+  return { urgent: 0, high: 1, normal: 2, low: 3 }[priority] ?? 4;
+}
+
+function taskIdFromParts(...parts) {
+  return Buffer.from(compactTaskKey(...parts)).toString("base64url").slice(0, 28);
+}
+
+function csvRowsToObjects(csvText) {
+  const rows = parseCsv(csvText);
+  const headers = (rows[0] || []).map(cleanCell);
+  return rows.slice(1)
+    .filter(row => row.some(cell => cleanCell(cell)))
+    .map(row => {
+      const item = {};
+      headers.forEach((header, index) => {
+        item[header || `column${index + 1}`] = cleanCell(row[index]);
+      });
+      return item;
+    });
+}
+
+async function findLatestLocalFile(pattern) {
+  const candidates = [];
+  const seen = new Set();
+  for (const baseDir of localDataRoots) {
+    let entries = [];
+    try {
+      entries = await readdir(baseDir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (!entry.isFile() || !pattern.test(entry.name)) continue;
+      const filePath = join(baseDir, entry.name);
+      const key = normalizeRoot(filePath).toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      try {
+        const stats = await stat(filePath);
+        candidates.push({ path: filePath, name: entry.name, modifiedMs: stats.mtimeMs, sizeBytes: stats.size });
+      } catch {}
+    }
+  }
+  candidates.sort((a, b) => b.modifiedMs - a.modifiedMs || b.name.localeCompare(a.name));
+  return candidates[0] || null;
+}
+
+async function readLatestLocalTaskAudit() {
+  const result = {
+    available: false,
+    sources: [],
+    summary: {},
+    groupRows: [],
+    pendingRows: [],
+    warnings: []
+  };
+
+  const auditFile = await findLatestLocalFile(/^sunwu_sarabun_audit_\d{4}-\d{2}-\d{2}\.json$/i);
+  if (auditFile) {
+    try {
+      const json = JSON.parse(await readFile(auditFile.path, "utf8"));
+      result.available = true;
+      result.audit = json;
+      result.summary = json.summary || {};
+      result.sources.push({ type: "local-audit-json", name: auditFile.name, path: auditFile.path, updatedAt: json.auditedAt || "" });
+    } catch (error) {
+      result.warnings.push(`อ่าน audit JSON ไม่สำเร็จ: ${error.message}`);
+    }
+  }
+
+  const groupFile = await findLatestLocalFile(/^sunwu_sarabun_group_summary_\d{4}-\d{2}-\d{2}\.csv$/i);
+  if (groupFile) {
+    try {
+      result.available = true;
+      result.groupRows = csvRowsToObjects(await readFile(groupFile.path, "utf8"));
+      result.sources.push({ type: "local-group-summary-csv", name: groupFile.name, path: groupFile.path, rowCount: result.groupRows.length });
+    } catch (error) {
+      result.warnings.push(`อ่าน group summary CSV ไม่สำเร็จ: ${error.message}`);
+    }
+  }
+
+  const pendingFile = await findLatestLocalFile(/^sunwu_sarabun_pending_with_clip_audit_\d{4}-\d{2}-\d{2}\.csv$/i);
+  if (pendingFile) {
+    try {
+      result.available = true;
+      result.pendingRows = csvRowsToObjects(await readFile(pendingFile.path, "utf8"));
+      result.sources.push({ type: "local-pending-clip-csv", name: pendingFile.name, path: pendingFile.path, rowCount: result.pendingRows.length });
+    } catch (error) {
+      result.warnings.push(`อ่าน pending audit CSV ไม่สำเร็จ: ${error.message}`);
+    }
+  }
+
+  return result;
+}
+
+function localPendingRowKey(row) {
+  return compactTaskKey(row["ตำแหน่ง"], row["ลำดับ"], row["ชื่อวิชา/หัวข้อ"]);
+}
+
+function manualRowKey(row) {
+  return compactTaskKey(row.position, row.order, row.title);
+}
+
+function makeTask({ type, priority = "normal", position = "", group = "", order = "", title = "", detail = "", action = "", url = "", source = "sheet", score = "", matchLevel = "", updatedAt = "" }) {
+  return {
+    id: taskIdFromParts(type, position, order, title, source),
+    type,
+    priority,
+    position,
+    group,
+    order,
+    title,
+    detail,
+    action,
+    url,
+    source,
+    score,
+    matchLevel,
+    updatedAt
+  };
+}
+
+async function loadTaskMonitor(sheetUrl, auth = null, options = {}) {
+  const generatedAt = new Date().toISOString();
+  const warnings = [];
+  const sources = [];
+  const telegram = publicTelegramConfig(await getTelegramConfig());
+
+  let dashboard = null;
+  let manualRows = [];
+  let scanIndex = { files: [] };
+  let localAudit = { available: false, sources: [], summary: {}, groupRows: [], pendingRows: [], warnings: [] };
+
+  try {
+    dashboard = await loadDashboard(sheetUrl, auth);
+    sources.push({ type: "google-dashboard", spreadsheetId: dashboard.spreadsheetId, gid: dashboard.gid, count: dashboard.count });
+  } catch (error) {
+    warnings.push(`โหลด Dashboard ไม่สำเร็จ: ${error.message}`);
+  }
+
+  try {
+    const spreadsheetId = extractSpreadsheetId(sheetUrl);
+    manualRows = await loadManualRows(spreadsheetId, auth);
+    sources.push({ type: "google-manual-rows", spreadsheetId, gid: manualEntryGid, count: manualRows.length });
+  } catch (error) {
+    warnings.push(`โหลดรายวิชาจากชีตไม่สำเร็จ: ${error.message}`);
+  }
+
+  try {
+    scanIndex = await readJson(indexPath, { files: [] });
+    if (scanIndex.scannedAt || scanIndex.files?.length) {
+      sources.push({ type: "local-scan-index", sourceRoot: scanIndex.sourceRoot || "", scannedAt: scanIndex.scannedAt || "", totalVideos: (scanIndex.files || []).length });
+    }
+  } catch (error) {
+    warnings.push(`อ่าน scan index ไม่สำเร็จ: ${error.message}`);
+  }
+
+  if (options.includeLocalAudit !== false) {
+    localAudit = await readLatestLocalTaskAudit();
+    warnings.push(...localAudit.warnings);
+    sources.push(...localAudit.sources);
+  }
+
+  const dashboardPositions = dashboard?.positions || [];
+  const closedPositionNames = new Set(dashboardPositions
+    .filter(position => String(position.closedCourse || "").toLowerCase() === "true")
+    .map(position => position.name));
+  const openManualRows = manualRows.filter(row => row.position && !closedPositionNames.has(row.position));
+  const pendingClipRows = openManualRows.filter(row => statusKind(row.sheetStatus) !== "done");
+  const pendingDocumentRows = openManualRows.filter(row => statusKind(row.documentStatus) !== "done");
+
+  const pendingAuditByKey = new Map();
+  for (const row of localAudit.pendingRows || []) {
+    pendingAuditByKey.set(localPendingRowKey(row), row);
+  }
+
+  const tasks = [];
+  for (const row of pendingClipRows) {
+    const auditRow = pendingAuditByKey.get(manualRowKey(row));
+    const hasClip = cleanCell(auditRow?.["มีคลิปในเครื่อง?"]) === "มี";
+    const matchLevel = auditRow?.["ระดับการจับคู่"] || "";
+    const score = auditRow?.["คะแนน"] || "";
+    const scoreNumber = Number(score || 0);
+    const flagDone = clipFlagKind(row.clipStatus) === "done";
+    const priority = flagDone || (hasClip && scoreNumber >= 80) ? "urgent" : hasClip ? "high" : "normal";
+    const type = hasClip || flagDone ? "clip-ready" : "clip-missing";
+    const detail = hasClip
+      ? `พบคลิปในเครื่อง${matchLevel ? ` (${matchLevel}${score ? ` ${score}%` : ""})` : ""}`
+      : flagDone ? "คอลัมน์ลงคลิปบอกว่าลงคลิปแล้ว แต่สถานะลิงก์ยังค้าง" : "ยังไม่พบคลิปจาก audit ล่าสุด";
+    tasks.push(makeTask({
+      type,
+      priority,
+      position: row.position,
+      group: row.group,
+      order: row.order,
+      title: row.title,
+      detail,
+      action: type === "clip-ready" ? "ลงลิงก์คลิป/โพสต์ในกลุ่ม" : "หาหรือจัดทำคลิป",
+      url: row.link,
+      source: auditRow ? "local-audit+sheet" : "sheet",
+      score,
+      matchLevel,
+      updatedAt: auditRow?.["อัปเดตล่าสุด"] || ""
+    }));
+  }
+
+  for (const row of pendingDocumentRows) {
+    tasks.push(makeTask({
+      type: "document-missing",
+      priority: statusKind(row.sheetStatus) === "done" ? "high" : "normal",
+      position: row.position,
+      group: row.group,
+      order: row.order,
+      title: row.title,
+      detail: "สถานะเอกสารยังไม่ครบ",
+      action: "เติม/ตรวจลิงก์เอกสาร",
+      url: row.link,
+      source: "sheet"
+    }));
+  }
+
+  for (const position of dashboardPositions) {
+    const missing = parseCount(position.missing);
+    const percent = parseCount(position.percent);
+    const closed = String(position.closedCourse || "").toLowerCase() === "true";
+    if (closed || !missing) continue;
+    if (percent < 50 || missing >= 10) {
+      tasks.push(makeTask({
+        type: "position-review",
+        priority: percent < 30 || missing >= 15 ? "high" : "normal",
+        position: position.name,
+        group: position.groupLabel,
+        title: position.name,
+        detail: `ค้าง ${missing.toLocaleString("th-TH")} วิชา, สำเร็จ ${position.percent || "0%"}`,
+        action: "ตรวจตำแหน่งนี้ก่อน",
+        url: position.facebookUrl,
+        source: "dashboard"
+      }));
+    }
+  }
+
+  const openPositions = dashboardPositions.filter(position => String(position.closedCourse || "").toLowerCase() !== "true");
+  const pendingWithClip = tasks.filter(task => task.type === "clip-ready").length;
+  const localSummary = localAudit.summary || {};
+  const summary = {
+    positions: dashboard?.count || dashboardPositions.length,
+    openPositions: localSummary.openPositions ?? openPositions.length,
+    closedPositions: localSummary.closedPositions ?? closedPositionNames.size,
+    subjects: localSummary.openSubjects ?? openManualRows.length,
+    linkedSubjects: localSummary.linkedSubjects ?? openManualRows.filter(row => statusKind(row.sheetStatus) === "done").length,
+    pendingSubjects: localSummary.pendingSubjects ?? pendingClipRows.length,
+    pendingWithClip: localSummary.pendingWithAnyClip ?? pendingWithClip,
+    pendingStrong: localSummary.pendingStrong ?? tasks.filter(task => task.type === "clip-ready" && Number(task.score || 0) >= 90).length,
+    pendingNeedsReview: localSummary.pendingNeedsReview ?? tasks.filter(task => task.type === "clip-ready" && Number(task.score || 0) < 80).length,
+    pendingNoClipFound: localSummary.pendingNoClipFound ?? tasks.filter(task => task.type === "clip-missing").length,
+    missingDocuments: pendingDocumentRows.length,
+    urgentTasks: tasks.filter(task => task.priority === "urgent").length,
+    highTasks: tasks.filter(task => task.priority === "high").length,
+    scanTotalVideos: (scanIndex.files || []).length || localAudit.audit?.scanIndex?.totalVideos || 0,
+    scanScannedAt: scanIndex.scannedAt || localAudit.audit?.scanIndex?.scannedAt || "",
+    localAuditAvailable: Boolean(localAudit.available)
+  };
+
+  const groupSummaryByPosition = new Map((localAudit.groupRows || []).map(row => [row["ตำแหน่ง"], row]));
+  const positions = dashboardPositions.map(position => {
+    const groupSummary = groupSummaryByPosition.get(position.name) || {};
+    return {
+      ...position,
+      missingCount: parseCount(position.missing),
+      percentNumber: parseCount(position.percent),
+      pendingWithClip: parseCount(groupSummary["ต้องตรวจที่มีคลิปในเครื่อง"]),
+      pendingStrong: parseCount(groupSummary["ตรงมาก"]),
+      pendingNeedsReview: parseCount(groupSummary["ต้องตรวจคลิป"]),
+      latestItem: groupSummary["รายการล่าสุด"] || "",
+      updatedAt: groupSummary["อัปเดตล่าสุด"] || ""
+    };
+  }).sort((a, b) =>
+    (b.pendingWithClip - a.pendingWithClip) ||
+    (b.missingCount - a.missingCount) ||
+    (a.percentNumber - b.percentNumber) ||
+    String(a.name).localeCompare(String(b.name), "th")
+  );
+
+  tasks.sort((a, b) =>
+    priorityRank(a.priority) - priorityRank(b.priority) ||
+    Number(b.score || 0) - Number(a.score || 0) ||
+    String(a.position).localeCompare(String(b.position), "th") ||
+    String(a.order).localeCompare(String(b.order), "th", { numeric: true })
+  );
+
+  return {
+    generatedAt,
+    ok: true,
+    sheetUrl,
+    summary,
+    positions,
+    tasks,
+    sources,
+    warnings,
+    telegram
+  };
+}
+
+function formatThaiDateTimeText(value = new Date(), timeZone = "Asia/Bangkok") {
+  try {
+    return new Intl.DateTimeFormat("th-TH", {
+      timeZone,
+      dateStyle: "medium",
+      timeStyle: "short"
+    }).format(new Date(value));
+  } catch {
+    return new Date(value).toISOString();
+  }
+}
+
+function formatTaskLine(task, index = 0) {
+  const prefix = index ? `${index}. ` : "";
+  const score = task.score ? ` (${task.matchLevel || "คะแนน"} ${task.score}%)` : "";
+  const order = task.order ? ` ลำดับ ${task.order}` : "";
+  return `${prefix}${task.position}${order}: ${task.title}${score}`;
+}
+
+function buildTelegramSummaryMessage(monitor, options = {}) {
+  const summary = monitor.summary || {};
+  const timeZone = options.timeZone || "Asia/Bangkok";
+  const topPositions = (monitor.positions || []).filter(position => position.missingCount).slice(0, 5);
+  const topTasks = (monitor.tasks || []).filter(task => ["urgent", "high"].includes(task.priority)).slice(0, 8);
+  const lines = [
+    "สรุปงานซุนวู",
+    `อัปเดต: ${formatThaiDateTimeText(monitor.generatedAt, timeZone)}`,
+    "",
+    `ตำแหน่งเปิด: ${summary.openPositions || 0}`,
+    `วิชาค้างลงลิงก์คลิป: ${summary.pendingSubjects || 0}`,
+    `ค้างแต่พบคลิปแล้ว: ${summary.pendingWithClip || 0}`,
+    `ยังไม่พบคลิป: ${summary.pendingNoClipFound || 0}`,
+    `เอกสารยังไม่ครบ: ${summary.missingDocuments || 0}`,
+    ""
+  ];
+
+  if (topPositions.length) {
+    lines.push("ตำแหน่งที่ควรดูแรก:");
+    topPositions.forEach((position, index) => {
+      lines.push(`${index + 1}. ${position.name} - ค้าง ${position.missingCount} วิชา, มีคลิปรอตรวจ ${position.pendingWithClip || 0}`);
+    });
+    lines.push("");
+  }
+
+  if (topTasks.length) {
+    lines.push("งานด่วน:");
+    topTasks.forEach((task, index) => lines.push(formatTaskLine(task, index + 1)));
+  } else {
+    lines.push("ตอนนี้ไม่มีงานด่วนระดับสูงจากข้อมูลล่าสุด");
+  }
+
+  lines.push("");
+  lines.push("ถามต่อได้ เช่น: สรุปงานค้าง, งานด่วนวันนี้, กกต การเงินเหลืออะไร, วิชาไหนมีคลิปแล้ว");
+  return lines.join("\n").slice(0, 3900);
+}
+
+function buildTelegramHelpMessage() {
+  return [
+    "ถามงานซุนวูด้วยภาษาปกติได้เลย",
+    "",
+    "ตัวอย่าง:",
+    "- สรุปงานค้าง",
+    "- งานด่วนวันนี้",
+    "- กกต การเงินเหลืออะไร",
+    "- วิชาไหนมีคลิปแล้วแต่ยังไม่ลงลิงก์",
+    "- งานเอกสารค้าง",
+    "",
+    "ถ้าถามชื่อตำแหน่ง ระบบจะสรุปตำแหน่งนั้นให้ก่อน"
+  ].join("\n");
+}
+
+function findPositionFromQuestion(text, monitor) {
+  const normalized = normalizeNoSpace(text);
+  if (!normalized) return null;
+  return [...(monitor.positions || [])]
+    .sort((a, b) => String(b.name || "").length - String(a.name || "").length)
+    .find(position => {
+      const name = normalizeNoSpace(position.name);
+      const group = normalizeNoSpace(position.groupLabel);
+      return (name && normalized.includes(name)) || (group && normalized.includes(group));
+    }) || null;
+}
+
+function searchTasksByQuestion(text, tasks) {
+  const terms = normalizeBotText(text)
+    .split(/\s+/)
+    .map(term => term.trim())
+    .filter(term => term.length >= 2 && !/^(มี|ไหม|อะไร|ยัง|งาน|ค้าง|เหลือ|ตำแหน่ง|วิชา|ลิงก์|ลิงค์|คลิป|เอกสาร)$/.test(term));
+  if (!terms.length) return [];
+  return tasks.filter(task => {
+    const haystack = normalizeBotText(`${task.position} ${task.group} ${task.order} ${task.title} ${task.detail}`);
+    return terms.every(term => haystack.includes(term));
+  });
+}
+
+function answerTelegramQuestion(text, monitor) {
+  const query = normalizeBotText(text);
+  if (!query || /^\/?(start|help|ช่วย)/i.test(query) || /ช่วย|ถามอะไรได้|ใช้ยังไง/.test(query)) {
+    return buildTelegramHelpMessage();
+  }
+
+  const position = findPositionFromQuestion(query, monitor);
+  if (position) {
+    const positionTasks = (monitor.tasks || []).filter(task => task.position === position.name);
+    const clipReady = positionTasks.filter(task => task.type === "clip-ready").slice(0, 8);
+    const missing = position.missingCount || positionTasks.filter(task => task.type !== "document-missing").length;
+    const lines = [
+      `${position.name}`,
+      `คืบหน้า: ${position.percent || "0%"}`,
+      `ค้างลงลิงก์คลิป: ${missing} วิชา`,
+      `มีคลิปรอตรวจ/ลงลิงก์: ${position.pendingWithClip || clipReady.length}`,
+      `เอกสารค้าง: ${positionTasks.filter(task => task.type === "document-missing").length}`,
+      ""
+    ];
+    const rows = clipReady.length ? clipReady : positionTasks.slice(0, 8);
+    if (rows.length) {
+      lines.push("รายการสำคัญ:");
+      rows.forEach((task, index) => lines.push(formatTaskLine(task, index + 1)));
+    } else {
+      lines.push("ยังไม่พบรายการค้างของตำแหน่งนี้จากข้อมูลล่าสุด");
+    }
+    if (position.facebookUrl) {
+      lines.push("");
+      lines.push(`กลุ่ม: ${position.facebookUrl}`);
+    }
+    return lines.join("\n").slice(0, 3900);
+  }
+
+  if (/ด่วน|ก่อน|วันนี้|ควรทำ|ทำอะไรก่อน|priority/.test(query)) {
+    const topTasks = (monitor.tasks || []).filter(task => ["urgent", "high"].includes(task.priority)).slice(0, 12);
+    if (!topTasks.length) return "ยังไม่พบงานด่วนระดับสูงจากข้อมูลล่าสุด";
+    return ["งานด่วนที่ควรทำก่อน", "", ...topTasks.map((task, index) => formatTaskLine(task, index + 1))].join("\n").slice(0, 3900);
+  }
+
+  if (/เอกสาร|ชีท|pdf|ไฟล์/.test(query)) {
+    const docTasks = (monitor.tasks || []).filter(task => task.type === "document-missing").slice(0, 12);
+    if (!docTasks.length) return "ยังไม่พบงานเอกสารค้างจากข้อมูลล่าสุด";
+    return ["งานเอกสารค้าง", "", ...docTasks.map((task, index) => formatTaskLine(task, index + 1))].join("\n").slice(0, 3900);
+  }
+
+  if (/มีคลิป|ลงคลิป|ยังไม่ลงลิงก์|ยังไม่ลงลิงค์|โพสต์|คลิป/.test(query)) {
+    const readyTasks = (monitor.tasks || []).filter(task => task.type === "clip-ready").slice(0, 12);
+    if (!readyTasks.length) return "ยังไม่พบวิชาที่มีคลิปแล้วแต่ยังค้างลงลิงก์จากข้อมูลล่าสุด";
+    return ["มีคลิปแล้ว แต่ยังค้างลงลิงก์", "", ...readyTasks.map((task, index) => formatTaskLine(task, index + 1))].join("\n").slice(0, 3900);
+  }
+
+  if (/สรุป|ภาพรวม|ค้าง|เหลือ|ทั้งหมด|dashboard/.test(query)) {
+    return buildTelegramSummaryMessage(monitor);
+  }
+
+  const matches = searchTasksByQuestion(query, monitor.tasks || []).slice(0, 10);
+  if (matches.length) {
+    return ["พบรายการที่น่าจะเกี่ยวข้อง", "", ...matches.map((task, index) => formatTaskLine(task, index + 1))].join("\n").slice(0, 3900);
+  }
+
+  return `${buildTelegramSummaryMessage(monitor)}\n\nยังไม่แน่ใจคำถามเฉพาะนี้ ลองพิมพ์ชื่อตำแหน่งหรือชื่อวิชาเพิ่มอีกนิดครับ`;
+}
+
+function splitTelegramText(text) {
+  const value = String(text || "");
+  if (value.length <= 3900) return [value];
+  const chunks = [];
+  let remaining = value;
+  while (remaining.length > 3900) {
+    let index = remaining.lastIndexOf("\n", 3900);
+    if (index < 1200) index = 3900;
+    chunks.push(remaining.slice(0, index));
+    remaining = remaining.slice(index).trimStart();
+  }
+  if (remaining) chunks.push(remaining);
+  return chunks;
+}
+
+async function callTelegramApi(method, payload, config = null) {
+  const telegram = config || await getTelegramConfig();
+  if (!telegram.botToken) throw new Error("Telegram bot token is not configured");
+  const response = await fetch(`https://api.telegram.org/bot${telegram.botToken}/${method}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  const json = await response.json().catch(() => ({}));
+  if (!response.ok || json.ok === false) {
+    throw new Error(json.description || `Telegram API ${method} failed (${response.status})`);
+  }
+  return json;
+}
+
+async function sendTelegramMessage(text, config = null, chatId = "") {
+  const telegram = config || await getTelegramConfig();
+  if (!telegram.configured && !(telegram.botToken && (chatId || telegram.chatId))) {
+    throw new Error("Telegram bot token/chat id is not configured");
+  }
+  const targetChatId = String(chatId || telegram.chatId || "").trim();
+  if (!targetChatId) throw new Error("Telegram chat id is not configured");
+  const chunks = splitTelegramText(text);
+  const results = [];
+  for (const chunk of chunks) {
+    results.push(await callTelegramApi("sendMessage", {
+      chat_id: targetChatId,
+      text: chunk,
+      disable_web_page_preview: true
+    }, telegram));
+  }
+  return { chunks: chunks.length, results };
+}
+
+async function sendSubjectUpdateTelegram(sheetUrl, payload, result) {
+  const telegram = await getTelegramConfig();
+  if (!telegram.enabled || !telegram.configured || !telegram.sendOnManualUpdate) return null;
+  const message = [
+    "อัปเดตสถานะงาน",
+    `ตำแหน่ง: ${payload.position || "-"}`,
+    `ลำดับ: ${payload.order || "-"}`,
+    `วิชา: ${payload.title || "-"}`,
+    `สถานะใหม่: ${payload.status || "-"}`,
+    `แถวชีต: ${result.rowNumber || "-"}`
+  ].join("\n");
+  return sendTelegramMessage(message, telegram);
+}
+
+async function setTelegramWebhookFromConfig() {
+  const telegram = await getTelegramConfig();
+  if (!telegram.botToken) throw new Error("Telegram bot token is not configured");
+  let secret = telegram.webhookSecret;
+  const config = await readAppConfig();
+  if (!secret) {
+    secret = randomBytes(24).toString("hex");
+    const savedConfig = mergeConfigForSave(config, {
+      telegram: {
+        ...(config.telegram || {}),
+        webhookSecret: secret
+      }
+    });
+    await writeFile(configPath, JSON.stringify(savedConfig, null, 2), "utf8");
+  }
+  const latestTelegram = await getTelegramConfig();
+  const baseUrl = latestTelegram.publicBaseUrl;
+  if (!baseUrl) throw new Error("Public base URL is not configured");
+  const webhookUrl = `${baseUrl}/api/telegram/webhook/${encodeURIComponent(secret)}`;
+  const response = await callTelegramApi("setWebhook", {
+    url: webhookUrl,
+    secret_token: secret,
+    allowed_updates: ["message"]
+  }, latestTelegram);
+  return { webhookUrl, response, telegram: publicTelegramConfig(latestTelegram) };
+}
+
+function getZonedDateParts(timeZone = "Asia/Bangkok") {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return {
+    dateKey: `${values.year}-${values.month}-${values.day}`,
+    timeKey: `${values.hour}:${values.minute}`
+  };
+}
+
+function startTelegramDailyScheduler() {
+  const timer = setInterval(async () => {
+    try {
+      const telegram = await getTelegramConfig();
+      if (!telegram.enabled || !telegram.configured || !telegram.dailySummaryTime) return;
+      const now = getZonedDateParts(telegram.timeZone);
+      if (now.timeKey !== telegram.dailySummaryTime) return;
+      const state = await readJson(taskStatePath, {});
+      const sendKey = `${now.dateKey}:${telegram.dailySummaryTime}`;
+      if (state.lastTelegramDailySummaryKey === sendKey) return;
+      const config = await readAppConfig();
+      if (!config.sheetUrl) return;
+      const monitor = await loadTaskMonitor(config.sheetUrl, await getBackgroundSheetAuth(), { includeLocalAudit: true });
+      await sendTelegramMessage(buildTelegramSummaryMessage(monitor, { timeZone: telegram.timeZone }), telegram);
+      await writeFile(taskStatePath, JSON.stringify({ ...state, lastTelegramDailySummaryKey: sendKey, lastTelegramDailySummaryAt: new Date().toISOString() }, null, 2), "utf8");
+    } catch {}
+  }, 60_000);
+  timer.unref?.();
 }
 
 async function searchSubjects(sheetUrl, query, limit = 80, auth = null) {
@@ -2182,6 +2674,112 @@ async function handleApi(req, res, url) {
     return true;
   }
 
+  if (url.pathname.startsWith("/api/telegram/webhook/") && req.method === "POST") {
+    const telegram = await getTelegramConfig();
+    const pathSecret = decodeURIComponent(url.pathname.split("/").pop() || "");
+    const headerSecret = String(req.headers["x-telegram-bot-api-secret-token"] || "");
+    if (telegram.webhookSecret && pathSecret !== telegram.webhookSecret) {
+      sendJson(res, 403, { ok: false, error: "Invalid Telegram webhook path" });
+      return true;
+    }
+    if (telegram.webhookSecret && headerSecret && headerSecret !== telegram.webhookSecret) {
+      sendJson(res, 403, { ok: false, error: "Invalid Telegram webhook secret" });
+      return true;
+    }
+
+    const update = await readRequestJson(req);
+    const message = update.message || update.edited_message || {};
+    const chatId = String(message.chat?.id || "");
+    const text = String(message.text || "").trim();
+    if (!telegram.enabled || !telegram.configured || !telegram.allowNaturalLanguage || !chatId || !text) {
+      sendJson(res, 200, { ok: true, ignored: true });
+      return true;
+    }
+    if (telegram.allowedChatId && chatId !== telegram.allowedChatId) {
+      sendJson(res, 200, { ok: true, ignored: true, reason: "chat-not-allowed" });
+      return true;
+    }
+
+    try {
+      const config = await readAppConfig();
+      const sheetUrl = config.sheetUrl || "";
+      if (!sheetUrl) throw new Error("ยังไม่ได้ตั้งค่า Google Sheet URL");
+      const monitor = await loadTaskMonitor(sheetUrl, await getBackgroundSheetAuth(), { includeLocalAudit: true });
+      const answer = answerTelegramQuestion(text, monitor);
+      await sendTelegramMessage(answer, telegram, chatId);
+      sendJson(res, 200, { ok: true });
+    } catch (error) {
+      try {
+        await sendTelegramMessage(`ตอบคำถามไม่สำเร็จ: ${error.message}`, telegram, chatId);
+      } catch {}
+      sendJson(res, 200, { ok: true, error: error.message });
+    }
+    return true;
+  }
+
+  if (url.pathname === "/api/task-monitor" && req.method === "POST") {
+    const body = await readRequestJson(req);
+    const config = await readAppConfig();
+    const sheetUrl = body.sheetUrl || config.sheetUrl;
+    if (!sheetUrl || typeof sheetUrl !== "string") {
+      sendJson(res, 400, { ok: false, error: "sheetUrl is required" });
+      return true;
+    }
+    const result = await loadTaskMonitor(sheetUrl, await getSheetAuth(req), { includeLocalAudit: body.includeLocalAudit !== false });
+    sendJson(res, 200, result);
+    return true;
+  }
+
+  if (url.pathname === "/api/telegram/send-summary" && req.method === "POST") {
+    const body = await readRequestJson(req);
+    const config = await readAppConfig();
+    const sheetUrl = body.sheetUrl || config.sheetUrl;
+    if (!sheetUrl || typeof sheetUrl !== "string") {
+      sendJson(res, 400, { ok: false, error: "sheetUrl is required" });
+      return true;
+    }
+    const telegram = await getTelegramConfig();
+    if (!telegram.enabled || !telegram.configured) {
+      sendJson(res, 400, { ok: false, error: "Telegram is not enabled or configured" });
+      return true;
+    }
+    const monitor = await loadTaskMonitor(sheetUrl, await getSheetAuth(req), { includeLocalAudit: body.includeLocalAudit !== false });
+    const message = buildTelegramSummaryMessage(monitor, { timeZone: telegram.timeZone });
+    const sent = await sendTelegramMessage(message, telegram);
+    sendJson(res, 200, { ok: true, sent, monitor: { summary: monitor.summary, generatedAt: monitor.generatedAt } });
+    return true;
+  }
+
+  if (url.pathname === "/api/telegram/test" && req.method === "POST") {
+    const telegram = await getTelegramConfig();
+    if (!telegram.enabled || !telegram.configured) {
+      sendJson(res, 400, { ok: false, error: "Telegram is not enabled or configured" });
+      return true;
+    }
+    const sent = await sendTelegramMessage(`ทดสอบระบบแจ้งเตือนซุนวู\nเวลา: ${formatThaiDateTimeText(new Date(), telegram.timeZone)}`, telegram);
+    sendJson(res, 200, { ok: true, sent, telegram: publicTelegramConfig(telegram) });
+    return true;
+  }
+
+  if (url.pathname === "/api/telegram/set-webhook" && req.method === "POST") {
+    await requireAppSession(req);
+    const result = await setTelegramWebhookFromConfig();
+    sendJson(res, 200, { ok: true, ...result });
+    return true;
+  }
+
+  if (url.pathname === "/api/telegram/webhook-info" && req.method === "GET") {
+    await requireAppSession(req);
+    const telegram = await getTelegramConfig();
+    if (!telegram.botToken) {
+      sendJson(res, 400, { ok: false, error: "Telegram bot token is not configured" });
+      return true;
+    }
+    const info = await callTelegramApi("getWebhookInfo", {}, telegram);
+    sendJson(res, 200, { ok: true, info, telegram: publicTelegramConfig(telegram) });
+    return true;
+  }
+
   if (url.pathname === "/api/scan" && req.method === "POST") {
     const body = await readRequestJson(req);
     const sourceRoot = cleanPathInput(body.sourceRoot);
@@ -2299,6 +2897,7 @@ async function handleApi(req, res, url) {
     const result = writer.configured
       ? await updateSubjectStatusViaAppsScript(sheetUrl, body, writer)
       : await updateSubjectStatus(sheetUrl, body, await getSheetAuth(req));
+    sendSubjectUpdateTelegram(sheetUrl, body, result).catch(() => {});
     sendJson(res, 200, { ok: true, ...result });
     return true;
   }
@@ -2643,7 +3242,7 @@ createServer(async (req, res) => {
   } catch (error) {
     if ((req.url || "").startsWith("/api/") || (req.url || "").startsWith("/auth/")) {
       const statusCode = Number(error.statusCode || 500);
-      sendJson(res, statusCode, { ok: false, error: repairMojibakeText(error.message) || "Server error" });
+      sendJson(res, statusCode, { ok: false, error: error.message || "Server error" });
     } else {
       res.writeHead(404);
       res.end("Not found");
@@ -2653,3 +3252,5 @@ createServer(async (req, res) => {
   const displayHost = host === "0.0.0.0" ? "127.0.0.1" : host;
   console.log(`Prototype running at http://${displayHost}:${port}`);
 });
+
+startTelegramDailyScheduler();

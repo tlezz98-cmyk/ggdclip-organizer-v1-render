@@ -19,3 +19,17 @@ services:
         sync: false
       - key: GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY
         sync: false
+      - key: TELEGRAM_ENABLED
+        value: "false"
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
+      - key: TELEGRAM_WEBHOOK_SECRET
+        sync: false
+      - key: PUBLIC_BASE_URL
+        value: https://ggdclip-organizer-v1-render.onrender.com
+      - key: TELEGRAM_DAILY_SUMMARY_TIME
+        value: "09:00"
+      - key: TELEGRAM_TIME_ZONE
+        value: Asia/Bangkok

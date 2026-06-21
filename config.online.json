@@ -25,5 +25,16 @@
   "appsScriptStatusWriter": {
     "url": "",
     "secret": ""
+  },
+  "telegram": {
+    "enabled": false,
+    "botToken": "",
+    "chatId": "",
+    "publicBaseUrl": "https://ggdclip-organizer-v1-render.onrender.com",
+    "webhookSecret": "",
+    "dailySummaryTime": "09:00",
+    "timeZone": "Asia/Bangkok",
+    "sendOnManualUpdate": false,
+    "allowNaturalLanguage": true
   }
 }
