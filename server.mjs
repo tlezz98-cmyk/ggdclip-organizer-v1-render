@@ -2358,13 +2358,15 @@ async function sendTelegramMessage(text, config = null, chatId = "") {
 async function sendSubjectUpdateTelegram(sheetUrl, payload, result) {
   const telegram = await getTelegramConfig();
   if (!telegram.enabled || !telegram.configured || !telegram.sendOnManualUpdate) return null;
+  const statusTypeLabel = payload.statusType === "clip"
+    ? "ลิงก์คลิป"
+    : payload.statusType === "document" ? "เอกสาร" : "สถานะ";
   const message = [
     "อัปเดตสถานะงาน",
     `ตำแหน่ง: ${payload.position || "-"}`,
     `ลำดับ: ${payload.order || "-"}`,
     `วิชา: ${payload.title || "-"}`,
-    `สถานะใหม่: ${payload.status || "-"}`,
-    `แถวชีต: ${result.rowNumber || "-"}`
+    `สถานะใหม่ (${statusTypeLabel}): ${payload.status || "-"}`
   ].join("\n");
   return sendTelegramMessage(message, telegram);
 }
