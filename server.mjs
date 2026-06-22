@@ -3037,16 +3037,19 @@ function verifyLineSignature(rawBody, signature, config) {
   return actualBuffer.length === expectedBuffer.length && timingSafeEqual(actualBuffer, expectedBuffer);
 }
 
-async function callLineApi(path, payload, config = null) {
+async function requestLineApi(path, options = {}, config = null) {
   const line = config || await getLineConfig();
   if (!line.channelAccessToken) throw new Error("LINE channel access token is not configured");
+  const method = options.method || "POST";
+  const payload = options.payload;
+  const headers = {
+    Authorization: `Bearer ${line.channelAccessToken}`
+  };
+  if (payload !== undefined) headers["Content-Type"] = "application/json";
   const response = await fetch(`https://api.line.me${path}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${line.channelAccessToken}`
-    },
-    body: JSON.stringify(payload)
+    method,
+    headers,
+    body: payload === undefined ? undefined : JSON.stringify(payload)
   });
   const text = await response.text();
   let json = {};
@@ -3061,6 +3064,25 @@ async function callLineApi(path, payload, config = null) {
     throw new Error(json.message || `LINE API ${path} failed (${response.status})`);
   }
   return json;
+}
+
+async function callLineApi(path, payload, config = null) {
+  return requestLineApi(path, { method: "POST", payload }, config);
+}
+
+async function getLineWebhookEndpointInfo(config = null) {
+  return requestLineApi("/v2/bot/channel/webhook/endpoint", { method: "GET" }, config);
+}
+
+async function setLineWebhookEndpointFromConfig(config = null) {
+  const line = config || await getLineConfig();
+  if (!line.publicBaseUrl) throw new Error("LINE public base URL is not configured");
+  return requestLineApi("/v2/bot/channel/webhook/endpoint", {
+    method: "PUT",
+    payload: {
+      endpoint: `${line.publicBaseUrl}/api/line/webhook`
+    }
+  }, line);
 }
 
 function buildLineTextMessages(text) {
@@ -3894,11 +3916,19 @@ async function handleApi(req, res, url) {
       const text = String(event.message?.text || "").trim();
       const sourceId = lineEventSourceId(event.source);
       if (event.type !== "message" || event.message?.type !== "text" || !event.replyToken || !text) continue;
-      if (line.allowedSourceId && sourceId && sourceId !== line.allowedSourceId) continue;
+      const wantsLineSourceId = /^(\/?line\s*id|\/?lineid|group\s*id|source\s*id|ไลน์\s*ไอดี|ขอรหัสกลุ่ม)$/i.test(text);
 
       try {
-        if (/^(\/?line\s*id|\/?lineid|group\s*id|source\s*id|ไลน์\s*ไอดี|ขอรหัสกลุ่ม)$/i.test(text)) {
+        if (wantsLineSourceId) {
           await replyLineMessage(event.replyToken, `LINE source id: ${sourceId || "-"}\nนำค่านี้ไปใส่ LINE_TARGET_ID ใน Render เพื่อให้ระบบส่งแจ้งเตือนไปห้องนี้ได้`, line);
+          continue;
+        }
+        if (line.allowedSourceId && sourceId && sourceId !== line.allowedSourceId) {
+          await replyLineMessage(event.replyToken, [
+            "ห้องนี้ยังไม่ได้ผูกกับระบบตอบคำถาม",
+            `LINE source id ของห้องนี้: ${sourceId}`,
+            "นำค่านี้ไปใส่ LINE_TARGET_ID ใน Render หรือพิมพ์ line id เพื่อคัดลอกอีกครั้ง"
+          ].join("\n"), line);
           continue;
         }
         const config = await readAppConfig();
@@ -3906,7 +3936,12 @@ async function handleApi(req, res, url) {
         if (!sheetUrl) throw new Error("ยังไม่ได้ตั้งค่า Google Sheet URL");
         const monitor = await loadTaskMonitor(sheetUrl, await getBackgroundSheetAuth(), { includeLocalAudit: true });
         const answer = answerTelegramQuestion(text, monitor);
-        await replyLineMessage(event.replyToken, answer, line);
+        try {
+          await replyLineMessage(event.replyToken, answer, line);
+        } catch (replyError) {
+          if (!sourceId) throw replyError;
+          await pushLineMessage(answer, line, sourceId);
+        }
       } catch (error) {
         try {
           await replyLineMessage(event.replyToken, `ตอบคำถามไม่สำเร็จ: ${error.message}`, line);
@@ -4040,6 +4075,40 @@ async function handleApi(req, res, url) {
       ok: true,
       line: publicLineConfig(line),
       webhookUrl: line.publicBaseUrl ? `${line.publicBaseUrl}/api/line/webhook` : ""
+    });
+    return true;
+  }
+
+  if (url.pathname === "/api/line/webhook-info" && req.method === "GET") {
+    const line = await getLineConfig();
+    if (!line.channelAccessToken) {
+      sendJson(res, 400, { ok: false, error: "LINE channel access token is not configured" });
+      return true;
+    }
+    const info = await getLineWebhookEndpointInfo(line);
+    sendJson(res, 200, {
+      ok: true,
+      info,
+      expectedWebhookUrl: line.publicBaseUrl ? `${line.publicBaseUrl}/api/line/webhook` : "",
+      line: publicLineConfig(line)
+    });
+    return true;
+  }
+
+  if (url.pathname === "/api/line/set-webhook" && req.method === "POST") {
+    const line = await getLineConfig();
+    if (!line.channelAccessToken || !line.publicBaseUrl) {
+      sendJson(res, 400, { ok: false, error: "LINE token/public URL is not configured" });
+      return true;
+    }
+    const response = await setLineWebhookEndpointFromConfig(line);
+    const info = await getLineWebhookEndpointInfo(line);
+    sendJson(res, 200, {
+      ok: true,
+      response,
+      info,
+      expectedWebhookUrl: `${line.publicBaseUrl}/api/line/webhook`,
+      line: publicLineConfig(line)
     });
     return true;
   }
