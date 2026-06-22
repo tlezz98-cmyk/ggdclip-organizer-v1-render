@@ -457,6 +457,46 @@
       margin-top: 0;
     }
 
+    .position-action-buttons {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      flex: 0 0 auto;
+      flex-wrap: nowrap;
+    }
+
+    #subjectEditModeButton {
+      border-color: #8bb7ff;
+      color: #1d4ed8;
+      background: #eff6ff;
+    }
+
+    #subjectEditModeButton:hover {
+      border-color: #60a5fa;
+      background: #dbeafe;
+    }
+
+    #subjectEditModeButton.primary {
+      color: white;
+      border-color: var(--blue);
+      background: var(--blue);
+    }
+
+    #subjectEditModeButton.primary:hover {
+      background: #1d56d9;
+    }
+
+    .position-group-button {
+      border-color: #8bd7a8;
+      color: #067647;
+      background: #ecfdf3;
+    }
+
+    .position-group-button:hover {
+      border-color: #47b881;
+      background: #dffbea;
+    }
+
     .toolbar {
       display: flex;
       align-items: center;
@@ -2374,10 +2414,12 @@
             <div class="panel-title">รายวิชาและคลิปที่พบ</div>
             <div class="position-summary-row">
               <div class="subtext" id="positionSummary">14 วิชา จาก สปอว. นักทรัพย์</div>
-              <button id="subjectEditModeButton" type="button">แก้ไขวิชา</button>
+              <div class="position-action-buttons">
+                <a class="button-link position-group-button hidden" id="positionGroupLink" href="#" target="_blank" rel="noopener">เปิดกลุ่ม</a>
+                <button id="subjectEditModeButton" type="button">แก้ไขวิชา</button>
+              </div>
             </div>
           </div>
-          <a class="button-link hidden" id="positionGroupLink" href="#" target="_blank" rel="noopener">เปิดกลุ่ม</a>
           <div class="toolbar">
             <input id="searchInput" class="control search" placeholder="ค้นหาวิชา/คลิป">
             <button id="addSubjectButton" type="button" style="display:none;">เพิ่มวิชา</button>
