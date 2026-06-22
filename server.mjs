@@ -397,6 +397,74 @@ async function getAppsScriptStatusWriterConfig() {
   };
 }
 
+let appsScriptSubjectCatalogWriterCache = {
+  cacheKey: "",
+  checkedAt: 0,
+  status: null
+};
+
+async function getAppsScriptSubjectCatalogWriterStatus(config) {
+  if (!config?.configured || !config.url) {
+    return { configured: false, checkedAt: "", error: "" };
+  }
+  const cacheKey = `${config.url}|${config.secret ? "secret" : "no-secret"}`;
+  const now = Date.now();
+  if (
+    appsScriptSubjectCatalogWriterCache.cacheKey === cacheKey &&
+    appsScriptSubjectCatalogWriterCache.status &&
+    now - appsScriptSubjectCatalogWriterCache.checkedAt < 5 * 60 * 1000
+  ) {
+    return appsScriptSubjectCatalogWriterCache.status;
+  }
+
+  let status;
+  try {
+    const response = await fetch(config.url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "catalog-capability-check",
+        sheetUrl: "catalog-capability-check",
+        secret: config.secret || ""
+      })
+    });
+    const text = await response.text();
+    let json = {};
+    try {
+      json = text ? JSON.parse(text) : {};
+    } catch {
+      json = {};
+    }
+    const supported = Boolean(
+      response.ok &&
+      json.ok !== false &&
+      (
+        json.subjectCatalogWriter ||
+        json.catalogWriter ||
+        (Array.isArray(json.supportedActions) && json.supportedActions.includes("rename"))
+      )
+    );
+    status = {
+      configured: supported,
+      checkedAt: new Date(now).toISOString(),
+      error: supported ? "" : (json.error || `Apps Script writer is not ready (${response.status})`)
+    };
+  } catch (error) {
+    status = {
+      configured: false,
+      checkedAt: new Date(now).toISOString(),
+      error: error.message || String(error)
+    };
+  }
+
+  appsScriptSubjectCatalogWriterCache = {
+    cacheKey,
+    checkedAt: now,
+    status
+  };
+  return status;
+}
+
 function publicAuthConfig(config) {
   return {
     configured: config.configured,
@@ -3537,13 +3605,16 @@ async function handleApi(req, res, url) {
   if (url.pathname === "/api/auth/status" && req.method === "GET") {
     const config = await getAuthConfig();
     const serviceConfig = await getServiceAccountConfig();
+    const appsScriptWriterConfig = await getAppsScriptStatusWriterConfig();
+    const appsScriptWriterPublicConfig = publicAppsScriptStatusWriterConfig(appsScriptWriterConfig);
+    appsScriptWriterPublicConfig.subjectCatalog = await getAppsScriptSubjectCatalogWriterStatus(appsScriptWriterConfig);
     const session = await getRequestAuth(req);
     sendJson(res, 200, {
       ok: true,
       auth: {
         ...publicAuthConfig(config),
         serviceAccount: publicServiceAccountConfig(serviceConfig),
-        appsScriptStatusWriter: publicAppsScriptStatusWriterConfig(await getAppsScriptStatusWriterConfig())
+        appsScriptStatusWriter: appsScriptWriterPublicConfig
       },
       user: session ? {
         email: session.email,
@@ -3989,9 +4060,21 @@ async function handleApi(req, res, url) {
     }
 
     const writer = await getAppsScriptStatusWriterConfig();
-    const result = writer.configured
-      ? await updateSubjectCatalogViaAppsScript(sheetUrl, body, writer)
-      : await updateSubjectCatalog(sheetUrl, body, await getSheetAuth(req));
+    let result;
+    if (writer.configured) {
+      const catalogWriter = await getAppsScriptSubjectCatalogWriterStatus(writer);
+      if (catalogWriter.configured) {
+        result = await updateSubjectCatalogViaAppsScript(sheetUrl, body, writer);
+      } else {
+        const auth = await getSheetAuth(req);
+        if (!auth?.accessToken) {
+          throw new Error("Apps Script Writer ยังไม่รองรับการแก้ชื่อ/แทรก/ลบวิชา กรุณาอัปเดต Apps Script deployment ก่อน");
+        }
+        result = await updateSubjectCatalog(sheetUrl, body, auth);
+      }
+    } else {
+      result = await updateSubjectCatalog(sheetUrl, body, await getSheetAuth(req));
+    }
     sendSubjectCatalogUpdateTelegram(result).catch(() => {});
     sendSubjectCatalogUpdateLine(result).catch(() => {});
     sendJson(res, 200, { ok: true, ...result });

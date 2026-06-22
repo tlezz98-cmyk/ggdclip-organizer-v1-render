@@ -74,6 +74,13 @@ function doPost(e) {
     const body = parseBody(e);
     verifySecret(body.secret || "");
     const action = cleanCell(body.action || "");
+    if (action === "catalog-capability-check") {
+      return jsonOutput({
+        ok: true,
+        subjectCatalogWriter: true,
+        supportedActions: ["rename", "insert", "delete"]
+      });
+    }
     const result = action === "rename" || action === "insert" || action === "delete"
       ? updateSubjectCatalog(body)
       : updateSubjectStatus(body);

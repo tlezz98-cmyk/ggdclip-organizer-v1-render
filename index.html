@@ -4081,7 +4081,7 @@
       return Boolean(
         lastAuthStatus?.user ||
         lastAuthStatus?.auth?.serviceAccount?.configured ||
-        lastAuthStatus?.auth?.appsScriptStatusWriter?.configured
+        lastAuthStatus?.auth?.appsScriptStatusWriter?.subjectCatalog?.configured
       );
     }
 
@@ -4089,8 +4089,8 @@
       openResultModal("แก้ไขวิชา", `
         <div class="warning">ตอนนี้เซิร์ฟเวอร์นี้ยังไม่มีสิทธิ์แก้ Google Sheet ที่เป็น private</div>
         <div class="scan-summary">
-          <div>ใช้ฟีเจอร์แก้ชื่อ/แทรก/ลบวิชาได้เมื่อเว็บมี Apps Script Writer หรือ Service Account ที่เขียนชีตได้</div>
-          <div>ถ้าจะลองบนเครื่องนี้ ให้ไปที่ ตั้งค่า / เครื่องมือขั้นสูง แล้วตั้งค่า Google ให้เรียบร้อยก่อน</div>
+          <div>ใช้ฟีเจอร์แก้ชื่อ/แทรก/ลบวิชาได้เมื่อ Apps Script Writer รองรับการจัดการรายวิชา หรือมี Service Account ที่เขียนชีตได้</div>
+          <div>ถ้ามี Apps Script Writer อยู่แล้ว ให้ deploy ไฟล์ google-apps-script-status-writer.gs เวอร์ชันล่าสุดก่อน</div>
         </div>
         <div class="toolbar">
           <button type="button" data-action="close-modal">เข้าใจแล้ว</button>
