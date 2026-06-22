@@ -2697,10 +2697,165 @@ function answerPositionQuestion(query, position, monitor) {
   return lines.join("\n").slice(0, 3900);
 }
 
+function dateKeyForValue(value = new Date(), timeZone = "Asia/Bangkok") {
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).formatToParts(new Date(value));
+    const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+    return `${values.year}-${values.month}-${values.day}`;
+  } catch {
+    return "";
+  }
+}
+
+function formatThaiDateText(value = new Date(), timeZone = "Asia/Bangkok") {
+  try {
+    return new Intl.DateTimeFormat("th-TH", {
+      timeZone,
+      dateStyle: "medium"
+    }).format(new Date(value));
+  } catch {
+    return new Date(value).toISOString().slice(0, 10);
+  }
+}
+
+function formatThaiTimeText(value = new Date(), timeZone = "Asia/Bangkok") {
+  try {
+    return new Intl.DateTimeFormat("th-TH", {
+      timeZone,
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false
+    }).format(new Date(value));
+  } catch {
+    return "";
+  }
+}
+
+function updateTypeLabel(type) {
+  if (type === "clip") return "ลิงก์คลิป";
+  if (type === "document") return "เอกสาร";
+  if (type === "subject-insert") return "แทรกวิชา";
+  if (type === "subject-rename") return "แก้ชื่อวิชา";
+  if (type === "subject-delete") return "ลบวิชา";
+  return "อัปเดต";
+}
+
+function inferUpdateTypeFromText(text = "") {
+  const value = cleanCell(text);
+  if (/ลิงก์คลิป|ลิงค์คลิป|คลิป/.test(value)) return "clip";
+  if (/ลิงก์เอกสาร|ลิงค์เอกสาร|เอกสาร/.test(value)) return "document";
+  if (/แทรกวิชา/.test(value)) return "subject-insert";
+  if (/แก้ชื่อวิชา/.test(value)) return "subject-rename";
+  return "update";
+}
+
+function collectDailyUpdateEntries(monitor, targetDateKey, timeZone = "Asia/Bangkok") {
+  const entries = [];
+  for (const subject of monitor.subjects || []) {
+    const history = Array.isArray(subject.updateHistory) ? subject.updateHistory : [];
+    for (const entry of history) {
+      const at = cleanCell(entry.at);
+      if (!at || dateKeyForValue(at, timeZone) !== targetDateKey) continue;
+      entries.push({
+        at,
+        type: cleanCell(entry.type) || inferUpdateTypeFromText(entry.status || entry.title),
+        status: cleanCell(entry.status),
+        title: cleanCell(entry.title) || subject.title,
+        position: subject.position || "",
+        order: subject.order || "",
+        rowNumber: subject.rowNumber || ""
+      });
+    }
+    if (!history.length && subject.latestUpdate && dateKeyForValue(subject.latestUpdate, timeZone) === targetDateKey) {
+      entries.push({
+        at: subject.latestUpdate,
+        type: inferUpdateTypeFromText(subject.latestUpdateItem),
+        status: subject.latestUpdateItem || "",
+        title: subject.title || "",
+        position: subject.position || "",
+        order: subject.order || "",
+        rowNumber: subject.rowNumber || ""
+      });
+    }
+  }
+
+  const seen = new Set();
+  return entries
+    .filter(entry => {
+      const key = [entry.at, entry.type, entry.position, entry.order, entry.title, entry.status].join("|");
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => Date.parse(b.at || 0) - Date.parse(a.at || 0));
+}
+
+function answerDailyWorkSummary(monitor, options = {}) {
+  const timeZone = options.timeZone || "Asia/Bangkok";
+  const now = options.now || new Date();
+  const todayKey = dateKeyForValue(now, timeZone);
+  const updates = collectDailyUpdateEntries(monitor, todayKey, timeZone);
+  const dateLabel = formatThaiDateText(now, timeZone);
+  if (!updates.length) {
+    return [
+      `สรุปงานที่ทำไปวันนี้ (${dateLabel})`,
+      "",
+      "ยังไม่พบประวัติอัปเดตของวันนี้ในระบบ",
+      "หมายเหตุ: ระบบนับจากรายการที่กดอัปเดตผ่านแอพและถูกบันทึกในประวัติอัปเดต"
+    ].join("\n");
+  }
+
+  const clipCount = updates.filter(entry => entry.type === "clip").length;
+  const documentCount = updates.filter(entry => entry.type === "document").length;
+  const subjectChangeCount = updates.filter(entry => String(entry.type || "").startsWith("subject-")).length;
+  const byPosition = new Map();
+  for (const entry of updates) {
+    const key = entry.position || "ไม่ระบุตำแหน่ง";
+    byPosition.set(key, (byPosition.get(key) || 0) + 1);
+  }
+  const positionLines = [...byPosition.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "th"))
+    .slice(0, 8)
+    .map(([position, count]) => `- ${position}: ${count} รายการ`);
+
+  const visible = updates.slice(0, 12);
+  const lines = [
+    `สรุปงานที่ทำไปวันนี้ (${dateLabel})`,
+    "",
+    `อัปเดตทั้งหมด: ${updates.length} รายการ`,
+    `ลิงก์คลิป: ${clipCount} | เอกสาร: ${documentCount} | จัดการรายวิชา: ${subjectChangeCount}`,
+    "",
+    "ตำแหน่งที่มีการอัปเดต:",
+    ...positionLines,
+    "",
+    "รายการล่าสุด:"
+  ];
+
+  visible.forEach((entry, index) => {
+    const time = formatThaiTimeText(entry.at, timeZone);
+    const order = entry.order ? ` ลำดับ ${entry.order}` : "";
+    const status = entry.status ? `: ${entry.status}` : "";
+    lines.push(`${index + 1}. ${time} ${entry.position}${order}`.trim());
+    lines.push(`   ${entry.title}`);
+    lines.push(`   ${updateTypeLabel(entry.type)}${status}`);
+  });
+  if (updates.length > visible.length) lines.push(`...ยังมีอีก ${updates.length - visible.length} รายการ`);
+  return lines.join("\n").slice(0, 3900);
+}
+
 function answerTelegramQuestion(text, monitor) {
   const query = normalizeBotText(text);
   if (!query || /^\/?(start|help|ช่วย)/i.test(query) || /ช่วย|ถามอะไรได้|ใช้ยังไง/.test(query)) {
     return buildTelegramHelpMessage();
+  }
+
+  if (/สรุป.*วันนี้|วันนี้.*สรุป|วันนี้.*ทำ|ทำ.*วันนี้|วันนี้.*อัปเดต|วันนี้.*อัพเดต|อัปเดต.*วันนี้|อัพเดต.*วันนี้|วันนี้.*ลงลิงก์|วันนี้.*ลงลิงค์|ลงลิงก์.*วันนี้|ลงลิงค์.*วันนี้/.test(query)) {
+    return answerDailyWorkSummary(monitor);
   }
 
   const position = findPositionFromQuestion(query, monitor);
