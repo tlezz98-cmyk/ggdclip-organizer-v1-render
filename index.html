@@ -445,6 +445,18 @@
       white-space: nowrap;
     }
 
+    .position-summary-row {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 4px;
+    }
+
+    .position-summary-row .subtext {
+      margin-top: 0;
+    }
+
     .toolbar {
       display: flex;
       align-items: center;
@@ -564,6 +576,30 @@
       font-weight: 600;
       line-height: 1.35;
       max-width: 430px;
+    }
+
+    .subject-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .subject-actions button {
+      min-height: 28px;
+      padding: 5px 8px;
+      font-size: 12px;
+    }
+
+    .danger-button {
+      border-color: #f2a7a7;
+      color: #b42318;
+      background: #fff6f6;
+    }
+
+    .danger-button:hover {
+      border-color: #ea6a6a;
+      background: #fff0f0;
     }
 
     .subtext {
@@ -2336,11 +2372,15 @@
         <div class="panel-head">
           <div>
             <div class="panel-title">รายวิชาและคลิปที่พบ</div>
-            <div class="subtext" id="positionSummary">14 วิชา จาก สปอว. นักทรัพย์</div>
+            <div class="position-summary-row">
+              <div class="subtext" id="positionSummary">14 วิชา จาก สปอว. นักทรัพย์</div>
+              <button id="subjectEditModeButton" type="button">แก้ไขวิชา</button>
+            </div>
           </div>
           <a class="button-link hidden" id="positionGroupLink" href="#" target="_blank" rel="noopener">เปิดกลุ่ม</a>
           <div class="toolbar">
             <input id="searchInput" class="control search" placeholder="ค้นหาวิชา/คลิป">
+            <button id="addSubjectButton" type="button" style="display:none;">เพิ่มวิชา</button>
             <button class="icon" title="รีเซ็ตตัวกรอง" id="resetButton">↺</button>
           </div>
         </div>
@@ -2949,6 +2989,7 @@
     let loadedPositions = [];
     let lastPreviewPayload = null;
     let clipIndexFiles = [];
+    let subjectEditMode = false;
     let collapsedSmartCards = new Set();
     let collapsedSmartPositions = new Set();
     let collapsedSubjectMapCards = new Set();
@@ -3653,6 +3694,19 @@
       setOption("clipFoundFilter", "selected", `เลือกไว้แล้ว (${stats.selected})`);
     }
 
+    function renderSubjectEditActions(item) {
+      if (!subjectEditMode) return "";
+      const key = escapeHtml(subjectClientKey(item));
+      return `
+        <div class="subject-actions">
+          <button type="button" data-action="rename-subject" data-subject-key="${key}">แก้ชื่อ</button>
+          <button type="button" data-action="insert-subject" data-placement="before" data-subject-key="${key}">แทรกก่อน</button>
+          <button type="button" data-action="insert-subject" data-placement="after" data-subject-key="${key}">แทรกหลัง</button>
+          <button class="danger-button" type="button" data-action="delete-subject" data-subject-key="${key}">ลบ</button>
+        </div>
+      `;
+    }
+
     function renderRows() {
       const tbody = document.getElementById("rows");
       const search = document.getElementById("searchInput").value.trim().toLowerCase();
@@ -3692,6 +3746,7 @@
           <td>
             <div class="subject">${item.title}</div>
             <div class="subtext">${item.clips.length ? item.clips.length + " ตัวเลือก" : "ยังไม่มีตัวเลือก"}${item.clips.some(clip => !clip.path) ? " · มีรายการยังไม่มี path จริง" : ""}</div>
+            ${renderSubjectEditActions(item)}
           </td>
           <td>${renderLinkStatus(item)}</td>
           <td>${renderDocumentStatus(item)}</td>
@@ -3751,6 +3806,7 @@
             <div class="toolbar">
               <button type="button" data-action="manual-search" data-subject-key="${escapeHtml(subjectClientKey(item))}" data-row="${escapeHtml(item.no)}">เลือก/ค้นคลิป</button>
               <button type="button" data-action="edit-note" data-row="${escapeHtml(item.no)}">แก้หมายเหตุ</button>
+              ${renderSubjectEditActions(item)}
             </div>
           </div>
         `;
@@ -4004,6 +4060,262 @@
       } finally {
         statusSaveInFlight.delete(saveKey);
         renderRows();
+      }
+    }
+
+    let subjectCatalogSaveInFlight = false;
+
+    function subjectOrderNumber(item) {
+      const match = String(item?.no || item?.sheet?.order || "").replace(/,/g, "").match(/-?\d+(?:\.\d+)?/);
+      if (!match) return null;
+      const number = Number(match[0]);
+      return Number.isFinite(number) ? number : null;
+    }
+
+    function editablePositionName() {
+      const position = document.getElementById("position").value;
+      return position && position !== allPositionsValue ? position : "";
+    }
+
+    function canWriteSubjectCatalogToSheet() {
+      return Boolean(lastAuthStatus?.user || lastAuthStatus?.auth?.serviceAccount?.configured);
+    }
+
+    function showSubjectCatalogAuthHelp() {
+      openResultModal("แก้ไขวิชา", `
+        <div class="warning">ตอนนี้เซิร์ฟเวอร์นี้ยังไม่มีสิทธิ์แก้ Google Sheet ที่เป็น private</div>
+        <div class="scan-summary">
+          <div>ใช้ฟีเจอร์แก้ชื่อ/แทรก/ลบวิชาได้เมื่อเปิดจากเว็บออนไลน์ที่ตั้งค่า Service Account แล้ว หรือเครื่องนี้ต้องตั้งค่า Google ก่อน</div>
+          <div>ถ้าจะลองบนเครื่องนี้ ให้ไปที่ ตั้งค่า / เครื่องมือขั้นสูง แล้วตั้งค่า Google Service Account ให้เรียบร้อย</div>
+        </div>
+        <div class="toolbar">
+          <button type="button" data-action="close-modal">เข้าใจแล้ว</button>
+        </div>
+      `);
+    }
+
+    function updateSubjectEditControls() {
+      const position = editablePositionName();
+      const editButton = document.getElementById("subjectEditModeButton");
+      const addButton = document.getElementById("addSubjectButton");
+      if (editButton) {
+        editButton.disabled = !position;
+        editButton.textContent = subjectEditMode ? "ออกจากโหมดแก้ไข" : "แก้ไขวิชา";
+        editButton.classList.toggle("primary", subjectEditMode);
+      }
+      if (addButton) {
+        addButton.style.display = subjectEditMode && position ? "" : "none";
+        addButton.disabled = !position;
+      }
+    }
+
+    function setSubjectEditMode(enabled) {
+      const position = editablePositionName();
+      subjectEditMode = Boolean(enabled && position);
+      updateSubjectEditControls();
+      renderRows();
+      setStatus(subjectEditMode
+        ? "สถานะ: เปิดโหมดแก้ไขวิชาแล้ว"
+        : "สถานะ: ปิดโหมดแก้ไขวิชาแล้ว");
+    }
+
+    function nextSubjectOrder() {
+      const position = editablePositionName();
+      const scopedSubjects = position ? subjects.filter(item => subjectPositionName(item) === position) : subjects;
+      const maxOrder = scopedSubjects.reduce((max, item) => {
+        const order = subjectOrderNumber(item);
+        return Number.isFinite(order) ? Math.max(max, order) : max;
+      }, 0);
+      return String(maxOrder + 1);
+    }
+
+    function openSubjectCatalogEditor(action, item = null, placement = "after") {
+      if (!canWriteSubjectCatalogToSheet()) {
+        showSubjectCatalogAuthHelp();
+        return;
+      }
+      const position = editablePositionName();
+      if (!position) {
+        openResultModal("จัดการชื่อวิชา", `<div class="warning">กรุณาเลือกตำแหน่งเดียวก่อน ไม่ใช่ตำแหน่งทั้งหมด</div>`);
+        return;
+      }
+      if (!subjectsLoadedFromSheet) {
+        openResultModal("จัดการชื่อวิชา", `<div class="warning">กรุณาโหลดรายวิชาจาก Google Sheet ก่อน</div>`);
+        return;
+      }
+
+      const anchorOrder = subjectOrderNumber(item);
+      const insertOrder = action === "insert"
+        ? (item ? String((anchorOrder || 0) + (placement === "after" ? 1 : 0)) : nextSubjectOrder())
+        : (item?.no || item?.sheet?.order || "");
+      const title = action === "rename" ? (item?.title || "") : "";
+      const modalTitle = action === "rename"
+        ? "แก้ชื่อวิชา"
+        : placement === "before" ? "แทรกวิชาก่อนรายการนี้" : item ? "แทรกวิชาหลังรายการนี้" : "เพิ่มวิชาท้ายตำแหน่ง";
+      const previewText = action === "insert"
+        ? `ระบบจะเลื่อนเลขลำดับเฉพาะตำแหน่ง ${position} ตั้งแต่ลำดับ ${insertOrder} เป็นต้นไป`
+        : `ระบบจะแก้ชื่อวิชาลำดับ ${insertOrder} ในตำแหน่ง ${position}`;
+
+      openResultModal(modalTitle, `
+        <div class="preview-line"><strong>ตำแหน่ง</strong><span>${escapeHtml(position)}</span></div>
+        ${item ? `<div class="preview-line"><strong>อ้างอิง</strong><span>${escapeHtml(item.no || "-")} · ${escapeHtml(item.title || "-")}</span></div>` : ""}
+        <div class="field">
+          <label for="subjectCatalogTitleInput">ชื่อวิชา</label>
+          <textarea id="subjectCatalogTitleInput" class="control" rows="4" placeholder="ใส่ชื่อวิชา">${escapeHtml(title)}</textarea>
+        </div>
+        <div class="field">
+          <label for="subjectCatalogOrderInput">ลำดับ</label>
+          <input id="subjectCatalogOrderInput" class="control" type="number" min="1" step="1" value="${escapeHtml(insertOrder)}" ${action === "rename" ? "readonly" : ""}>
+        </div>
+        <div class="warning">${escapeHtml(previewText)}</div>
+        <div class="toolbar">
+          <button class="primary" type="button" data-action="save-subject-catalog" data-subject-catalog-action="${escapeHtml(action)}" data-placement="${escapeHtml(placement)}" data-subject-key="${escapeHtml(item ? subjectClientKey(item) : "")}">บันทึกลง Google Sheet</button>
+          <button type="button" data-action="close-modal">ยกเลิก</button>
+        </div>
+      `);
+      setTimeout(() => document.getElementById("subjectCatalogTitleInput")?.focus(), 0);
+    }
+
+    function openSubjectEditMenu(item) {
+      if (!item) return;
+      const key = subjectClientKey(item);
+      openResultModal("แก้ไขวิชา", `
+        <div class="preview-line"><strong>ลำดับ</strong><span>${escapeHtml(item.no || item.sheet?.order || "-")}</span></div>
+        <div class="preview-line"><strong>วิชา</strong><span>${escapeHtml(item.title || "-")}</span></div>
+        <div class="preview-line"><strong>ตำแหน่ง</strong><span>${escapeHtml(subjectPositionName(item) || "-")}</span></div>
+        <div class="toolbar">
+          <button class="primary" type="button" data-action="rename-subject" data-subject-key="${escapeHtml(key)}">แก้ชื่อวิชา</button>
+          <button type="button" data-action="insert-subject" data-placement="before" data-subject-key="${escapeHtml(key)}">แทรกวิชาก่อนนี้</button>
+          <button type="button" data-action="insert-subject" data-placement="after" data-subject-key="${escapeHtml(key)}">แทรกวิชาหลังนี้</button>
+          <button class="danger-button" type="button" data-action="delete-subject" data-subject-key="${escapeHtml(key)}">ลบวิชา</button>
+        </div>
+      `);
+    }
+
+    function openSubjectDeleteConfirm(item) {
+      if (!item) return;
+      if (!canWriteSubjectCatalogToSheet()) {
+        showSubjectCatalogAuthHelp();
+        return;
+      }
+      const order = item.no || item.sheet?.order || "";
+      const key = subjectClientKey(item);
+      openResultModal("ลบวิชา", `
+        <div class="warning">ยืนยันการลบวิชานี้ออกจาก Google Sheet ระบบจะเลื่อนเลขลำดับเฉพาะตำแหน่งนี้ขึ้น 1 หลังลบ</div>
+        <div class="preview-line"><strong>ลำดับ</strong><span>${escapeHtml(order || "-")}</span></div>
+        <div class="preview-line"><strong>วิชา</strong><span>${escapeHtml(item.title || "-")}</span></div>
+        <div class="preview-line"><strong>ตำแหน่ง</strong><span>${escapeHtml(subjectPositionName(item) || "-")}</span></div>
+        <div class="toolbar">
+          <button class="danger-button" type="button" data-action="confirm-delete-subject" data-subject-key="${escapeHtml(key)}">ยืนยันลบวิชา</button>
+          <button type="button" data-action="close-modal">ยกเลิก</button>
+        </div>
+      `);
+    }
+
+    async function saveSubjectCatalogFromModal(button) {
+      if (subjectCatalogSaveInFlight) return;
+      const action = button.dataset.subjectCatalogAction;
+      const item = findSubjectByClientKey(button.dataset.subjectKey || "");
+      const position = editablePositionName();
+      const titleInput = document.getElementById("subjectCatalogTitleInput");
+      const orderInput = document.getElementById("subjectCatalogOrderInput");
+      const sheetUrl = document.getElementById("sheetUrl").value.trim();
+      const title = titleInput?.value.trim() || "";
+      const insertOrder = orderInput?.value.trim() || "";
+      if (!sheetUrl) throw new Error("ยังไม่ได้ใส่ Google Sheet URL");
+      if (!position) throw new Error("กรุณาเลือกตำแหน่งเดียวก่อน");
+      if (!title) throw new Error("กรุณาใส่ชื่อวิชา");
+      if (action === "rename" && !item) throw new Error("ไม่พบวิชาที่จะแก้ชื่อ");
+
+      const payload = action === "rename"
+        ? {
+          sheetUrl,
+          action,
+          position,
+          order: item.no || item.sheet?.order || "",
+          title: item.title || "",
+          newTitle: title
+        }
+        : {
+          sheetUrl,
+          action: "insert",
+          position,
+          insertOrder,
+          title
+        };
+
+      subjectCatalogSaveInFlight = true;
+      button.disabled = true;
+      button.textContent = "กำลังบันทึก...";
+      setStatus(action === "rename" ? "สถานะ: กำลังแก้ชื่อวิชาใน Google Sheet" : "สถานะ: กำลังแทรกวิชาใน Google Sheet");
+
+      try {
+        const response = await fetch("/api/update-subject-catalog", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.ok) throw new Error(result.error || "บันทึกชื่อวิชาไม่สำเร็จ");
+        invalidateDashboardData();
+        closeModal();
+        try {
+          await loadSubjectsForPosition({ auto: true });
+        } catch (reloadError) {
+          setStatus(`สถานะ: บันทึกสำเร็จแล้ว แต่โหลดรายการใหม่ไม่สำเร็จ - ${reloadError.message}`);
+          return;
+        }
+        setStatus(action === "rename"
+          ? `สถานะ: แก้ชื่อวิชาเป็น "${title}" แล้ว`
+          : `สถานะ: แทรกวิชา "${title}" ที่ลำดับ ${insertOrder} แล้ว`);
+      } finally {
+        subjectCatalogSaveInFlight = false;
+        button.disabled = false;
+        button.textContent = "บันทึกลง Google Sheet";
+      }
+    }
+
+    async function deleteSubjectFromModal(button) {
+      if (subjectCatalogSaveInFlight) return;
+      const item = findSubjectByClientKey(button.dataset.subjectKey || "");
+      const position = editablePositionName();
+      const sheetUrl = document.getElementById("sheetUrl").value.trim();
+      if (!sheetUrl) throw new Error("ยังไม่ได้ใส่ Google Sheet URL");
+      if (!position) throw new Error("กรุณาเลือกตำแหน่งเดียวก่อน");
+      if (!item) throw new Error("ไม่พบวิชาที่จะลบ");
+
+      subjectCatalogSaveInFlight = true;
+      button.disabled = true;
+      button.textContent = "กำลังลบ...";
+      setStatus("สถานะ: กำลังลบวิชาใน Google Sheet");
+
+      try {
+        const response = await fetch("/api/update-subject-catalog", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sheetUrl,
+            action: "delete",
+            position,
+            order: item.no || item.sheet?.order || "",
+            title: item.title || ""
+          })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.ok) throw new Error(result.error || "ลบวิชาไม่สำเร็จ");
+        invalidateDashboardData();
+        closeModal();
+        try {
+          await loadSubjectsForPosition({ auto: true });
+        } catch (reloadError) {
+          setStatus(`สถานะ: ลบสำเร็จแล้ว แต่โหลดรายการใหม่ไม่สำเร็จ - ${reloadError.message}`);
+          return;
+        }
+        setStatus(`สถานะ: ลบวิชา "${item.title || ""}" แล้ว`);
+      } finally {
+        subjectCatalogSaveInFlight = false;
+        button.disabled = false;
+        button.textContent = "ยืนยันลบวิชา";
       }
     }
 
@@ -5490,6 +5802,7 @@
       closePositionMenu();
       closePositionDocumentMenu();
       resetSubjectTableFilters();
+      subjectEditMode = false;
       updatePositionSummary();
       loadSubjectsForPosition({ auto: true }).catch(error => setStatus(`สถานะ: โหลดรายวิชาไม่สำเร็จ - ${error.message}`));
     }
@@ -5499,6 +5812,8 @@
       const option = select.selectedOptions[0];
       if (!option) return;
       const groupLink = document.getElementById("positionGroupLink");
+      if (option.value === allPositionsValue) subjectEditMode = false;
+      updateSubjectEditControls();
       const facebookUrl = option.value === allPositionsValue ? "" : (option.dataset.facebookUrl || "").trim();
       if (groupLink) {
         if (facebookUrl) {
@@ -7209,6 +7524,27 @@
         return;
       }
 
+      const renameSubjectButton = event.target.closest("[data-action='rename-subject']");
+      if (renameSubjectButton) {
+        const item = findSubjectByClientKey(renameSubjectButton.dataset.subjectKey || "");
+        if (item) openSubjectCatalogEditor("rename", item);
+        return;
+      }
+
+      const insertSubjectButton = event.target.closest("[data-action='insert-subject']");
+      if (insertSubjectButton) {
+        const item = findSubjectByClientKey(insertSubjectButton.dataset.subjectKey || "");
+        if (item) openSubjectCatalogEditor("insert", item, insertSubjectButton.dataset.placement || "after");
+        return;
+      }
+
+      const deleteSubjectButton = event.target.closest("[data-action='delete-subject']");
+      if (deleteSubjectButton) {
+        const item = findSubjectByClientKey(deleteSubjectButton.dataset.subjectKey || "");
+        if (item) openSubjectDeleteConfirm(item);
+        return;
+      }
+
       const noteButton = event.target.closest("[data-action='edit-note']");
       if (noteButton) {
         openNoteEditor(noteButton.dataset.row);
@@ -7219,6 +7555,24 @@
       const searchButton = event.target.closest("[data-action='manual-search']");
       if (searchButton) {
         openManualSearch(searchButton.dataset.subjectKey || "", searchButton.dataset.row || "");
+        return;
+      }
+      const renameSubjectButton = event.target.closest("[data-action='rename-subject']");
+      if (renameSubjectButton) {
+        const item = findSubjectByClientKey(renameSubjectButton.dataset.subjectKey || "");
+        if (item) openSubjectCatalogEditor("rename", item);
+        return;
+      }
+      const insertSubjectButton = event.target.closest("[data-action='insert-subject']");
+      if (insertSubjectButton) {
+        const item = findSubjectByClientKey(insertSubjectButton.dataset.subjectKey || "");
+        if (item) openSubjectCatalogEditor("insert", item, insertSubjectButton.dataset.placement || "after");
+        return;
+      }
+      const deleteSubjectButton = event.target.closest("[data-action='delete-subject']");
+      if (deleteSubjectButton) {
+        const item = findSubjectByClientKey(deleteSubjectButton.dataset.subjectKey || "");
+        if (item) openSubjectDeleteConfirm(item);
         return;
       }
       const noteButton = event.target.closest("[data-action='edit-note']");
@@ -7279,6 +7633,26 @@
       const openOutputButton = event.target.closest("[data-action='open-output-folder']");
       if (openOutputButton) {
         openPathFromButton(event, openOutputButton);
+        return;
+      }
+
+      const closeModalButton = event.target.closest("[data-action='close-modal']");
+      if (closeModalButton) {
+        closeModal();
+        return;
+      }
+
+      const saveSubjectCatalogButton = event.target.closest("[data-action='save-subject-catalog']");
+      if (saveSubjectCatalogButton) {
+        saveSubjectCatalogFromModal(saveSubjectCatalogButton)
+          .catch(error => openResultModal("จัดการชื่อวิชา", `<div class="warning">${escapeHtml(error.message)}</div>`));
+        return;
+      }
+
+      const confirmDeleteSubjectButton = event.target.closest("[data-action='confirm-delete-subject']");
+      if (confirmDeleteSubjectButton) {
+        deleteSubjectFromModal(confirmDeleteSubjectButton)
+          .catch(error => openResultModal("ลบวิชา", `<div class="warning">${escapeHtml(error.message)}</div>`));
         return;
       }
 
@@ -7403,6 +7777,14 @@
     });
     document.getElementById("loadPositionsButton").addEventListener("click", loadPositionsFromSheet);
     document.getElementById("loadSubjectsButton").addEventListener("click", loadSubjectsForPosition);
+    document.getElementById("subjectEditModeButton").addEventListener("click", () => {
+      if (!subjectEditMode && !canWriteSubjectCatalogToSheet()) {
+        showSubjectCatalogAuthHelp();
+        return;
+      }
+      setSubjectEditMode(!subjectEditMode);
+    });
+    document.getElementById("addSubjectButton").addEventListener("click", () => openSubjectCatalogEditor("insert", null, "end"));
     document.getElementById("position").addEventListener("change", () => {
       syncPositionSearchToSelection();
       syncPositionDocumentSearchToSelection();

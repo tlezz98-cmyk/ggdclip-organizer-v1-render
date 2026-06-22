@@ -1141,6 +1141,331 @@ async function updateGoogleSheetCell(spreadsheetId, sheetName, rowNumber, column
   return { range, updatedCells: json.updatedCells || 0 };
 }
 
+async function updateGoogleSheetValuesBatch(spreadsheetId, data, auth) {
+  if (!auth?.accessToken) {
+    throw new Error("ต้องตั้งค่า Service Account หรือเข้าสู่ระบบ Google ที่มีสิทธิ์แก้ชีตก่อน");
+  }
+  const updates = (data || []).filter(item => item?.range && Array.isArray(item.values));
+  if (!updates.length) return { updatedCells: 0, responses: [] };
+  const apiUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`;
+  const response = await fetch(apiUrl, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${auth.accessToken}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      valueInputOption: "USER_ENTERED",
+      data: updates
+    })
+  });
+  const json = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      throw new Error("บัญชีที่แอพใช้ยังไม่มีสิทธิ์แก้ Google Sheet นี้ กรุณาแชร์ชีตให้ Service Account เป็น Editor");
+    }
+    throw new Error(json.error?.message || `เขียน Google Sheet ไม่สำเร็จ (${response.status})`);
+  }
+  csvCache.clear();
+  return {
+    updatedCells: json.totalUpdatedCells || 0,
+    responses: json.responses || []
+  };
+}
+
+async function batchUpdateSpreadsheet(spreadsheetId, requests, auth) {
+  if (!auth?.accessToken) {
+    throw new Error("ต้องตั้งค่า Service Account หรือเข้าสู่ระบบ Google ที่มีสิทธิ์แก้ชีตก่อน");
+  }
+  const bodyRequests = (requests || []).filter(Boolean);
+  if (!bodyRequests.length) return { replies: [] };
+  const apiUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`;
+  const response = await fetch(apiUrl, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${auth.accessToken}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ requests: bodyRequests })
+  });
+  const json = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      throw new Error("บัญชีที่แอพใช้ยังไม่มีสิทธิ์แก้ Google Sheet นี้ กรุณาแชร์ชีตให้ Service Account เป็น Editor");
+    }
+    throw new Error(json.error?.message || `แก้โครงสร้าง Google Sheet ไม่สำเร็จ (${response.status})`);
+  }
+  csvCache.clear();
+  return { replies: json.replies || [] };
+}
+
+function sheetCellRange(sheetName, rowNumber, columnIndexValue) {
+  const column = columnNumberToA1(columnIndexValue);
+  return `${sheetsRangeForWholeSheet(sheetName)}!${column}${rowNumber}`;
+}
+
+function sheetRowRange(sheetName, rowNumber, columnCount) {
+  const lastColumn = columnNumberToA1(Math.max(0, Number(columnCount || 1) - 1));
+  return `${sheetsRangeForWholeSheet(sheetName)}!A${rowNumber}:${lastColumn}${rowNumber}`;
+}
+
+function parseSubjectOrder(value) {
+  const match = String(value || "").replace(/,/g, "").match(/-?\d+(?:\.\d+)?/);
+  if (!match) return null;
+  const number = Number(match[0]);
+  return Number.isFinite(number) ? number : null;
+}
+
+function subjectSheetIndexes(header) {
+  return {
+    positionIndex: columnIndex(header, ["ตำแหน่ง"]),
+    groupIndex: columnIndex(header, ["กลุ่ม"]),
+    orderIndex: columnIndex(header, ["ลำดับ"]),
+    subjectIndex: columnIndex(header, ["ชื่อวิชา/หัวข้อ"]),
+    statusIndex: columnIndex(header, clipLinkStatusHeaders),
+    documentStatusIndex: columnIndex(header, documentStatusHeaders),
+    latestUpdateIndex: columnIndex(header, latestUpdateHeaders),
+    latestUpdateItemIndex: columnIndex(header, latestUpdateItemHeaders),
+    updateHistoryIndex: columnIndex(header, updateHistoryHeaders),
+    reusableIndex: columnIndex(header, ["ใช้สอนได้หลายกลุ่ม"]),
+    linkIndex: columnIndex(header, ["ลิงก์โพสต์/กลุ่ม", "ลิงก์กลุ่ม", "Facebook"]),
+    noteIndex: columnIndex(header, ["หมายเหตุ"]),
+    clipStatusIndex: columnIndex(header, ["ลงคลิป"])
+  };
+}
+
+function subjectRowsForPosition(rows, indexes, position) {
+  return rows.slice(1)
+    .map((row, index) => ({
+      row,
+      rowNumber: index + 2,
+      order: cleanCell(row[indexes.orderIndex]),
+      orderNumber: parseSubjectOrder(row[indexes.orderIndex]),
+      title: cleanCell(row[indexes.subjectIndex])
+    }))
+    .filter(item => sameSheetKey(item.row[indexes.positionIndex], position) && item.title);
+}
+
+function buildInsertedSubjectRow({ headerLength, indexes, templateRow, position, order, title, updatedAt }) {
+  const row = Array.from({ length: headerLength }, () => "");
+  if (indexes.positionIndex >= 0) row[indexes.positionIndex] = position;
+  if (indexes.groupIndex >= 0) row[indexes.groupIndex] = cleanCell(templateRow?.[indexes.groupIndex]);
+  if (indexes.orderIndex >= 0) row[indexes.orderIndex] = String(order);
+  if (indexes.subjectIndex >= 0) row[indexes.subjectIndex] = title;
+  if (indexes.statusIndex >= 0) row[indexes.statusIndex] = "ยังไม่ลงลิงก์";
+  if (indexes.documentStatusIndex >= 0) row[indexes.documentStatusIndex] = "ยังไม่ลงลิงก์";
+  if (indexes.reusableIndex >= 0) row[indexes.reusableIndex] = cleanCell(templateRow?.[indexes.reusableIndex]);
+  if (indexes.linkIndex >= 0) row[indexes.linkIndex] = cleanCell(templateRow?.[indexes.linkIndex]);
+  if (indexes.latestUpdateIndex >= 0) row[indexes.latestUpdateIndex] = updatedAt;
+  if (indexes.latestUpdateItemIndex >= 0) row[indexes.latestUpdateItemIndex] = `แทรกวิชา: ${title}`;
+  if (indexes.updateHistoryIndex >= 0) {
+    row[indexes.updateHistoryIndex] = buildUpdateHistoryValue("", {
+      at: updatedAt,
+      type: "subject-insert",
+      status: `ลำดับ ${order}`,
+      title
+    });
+  }
+  return row;
+}
+
+function findUniqueSubjectRow(rows, indexes, payload) {
+  const position = cleanCell(payload.position);
+  const order = cleanCell(payload.order);
+  const title = cleanCell(payload.title);
+  const matches = rows.slice(1)
+    .map((row, index) => ({ row, rowNumber: index + 2 }))
+    .filter(({ row }) =>
+      sameSheetKey(row[indexes.positionIndex], position) &&
+      sameSheetKey(row[indexes.orderIndex], order) &&
+      sameSheetKey(row[indexes.subjectIndex], title)
+    );
+  if (matches.length !== 1) {
+    throw new Error(matches.length === 0
+      ? "ไม่พบแถววิชาที่ตรงกับตำแหน่ง/ลำดับ/ชื่อวิชานี้"
+      : `พบ ${matches.length} แถวที่ตรงกัน จึงยังไม่แก้เพื่อกันผิดแถว`);
+  }
+  return matches[0];
+}
+
+async function updateSubjectCatalog(sheetUrl, payload, auth = null) {
+  const spreadsheetId = extractSpreadsheetId(sheetUrl);
+  if (!spreadsheetId) throw new Error("ไม่พบ spreadsheet id");
+  const action = cleanCell(payload.action);
+  if (!["rename", "insert", "delete"].includes(action)) throw new Error("คำสั่งแก้วิชาไม่ถูกต้อง");
+
+  const csvText = await fetchSheetCsv(spreadsheetId, manualEntryGid, auth);
+  const rows = parseCsv(csvText);
+  const header = rows[0] || [];
+  const indexes = subjectSheetIndexes(header);
+  if (indexes.positionIndex < 0 || indexes.orderIndex < 0 || indexes.subjectIndex < 0) {
+    throw new Error("ไม่พบคอลัมน์ตำแหน่ง/ลำดับ/ชื่อวิชาในชีต");
+  }
+
+  const sheetName = await fetchSheetTitleByGid(spreadsheetId, manualEntryGid, auth);
+  const updatedAt = new Date().toISOString();
+
+  if (action === "rename") {
+    const newTitle = cleanCell(payload.newTitle);
+    if (!newTitle) throw new Error("กรุณาใส่ชื่อวิชาใหม่");
+    const match = findUniqueSubjectRow(rows, indexes, payload);
+    const previousTitle = cleanCell(match.row[indexes.subjectIndex]);
+    if (sameSheetKey(previousTitle, newTitle)) throw new Error("ชื่อวิชาใหม่เหมือนเดิม");
+
+    const data = [
+      {
+        range: sheetCellRange(sheetName, match.rowNumber, indexes.subjectIndex),
+        values: [[newTitle]]
+      }
+    ];
+    if (indexes.latestUpdateIndex >= 0) {
+      data.push({ range: sheetCellRange(sheetName, match.rowNumber, indexes.latestUpdateIndex), values: [[updatedAt]] });
+    }
+    if (indexes.latestUpdateItemIndex >= 0) {
+      data.push({ range: sheetCellRange(sheetName, match.rowNumber, indexes.latestUpdateItemIndex), values: [[`แก้ชื่อวิชา: ${previousTitle} → ${newTitle}`]] });
+    }
+    if (indexes.updateHistoryIndex >= 0) {
+      const history = buildUpdateHistoryValue(match.row[indexes.updateHistoryIndex], {
+        at: updatedAt,
+        type: "subject-rename",
+        status: cleanCell(payload.order),
+        title: `${previousTitle} → ${newTitle}`
+      });
+      data.push({ range: sheetCellRange(sheetName, match.rowNumber, indexes.updateHistoryIndex), values: [[history]] });
+    }
+    const update = await updateGoogleSheetValuesBatch(spreadsheetId, data, auth);
+    return {
+      action,
+      spreadsheetId,
+      gid: manualEntryGid,
+      rowNumber: match.rowNumber,
+      position: cleanCell(payload.position),
+      order: cleanCell(payload.order),
+      previousTitle,
+      title: newTitle,
+      updatedAt,
+      updatedCells: update.updatedCells
+    };
+  }
+
+  if (action === "delete") {
+    const match = findUniqueSubjectRow(rows, indexes, payload);
+    const position = cleanCell(payload.position);
+    const deletedOrder = parseSubjectOrder(payload.order);
+    if (!position || !Number.isFinite(deletedOrder)) throw new Error("ข้อมูลตำแหน่ง/ลำดับไม่ครบสำหรับลบวิชา");
+    const previousTitle = cleanCell(match.row[indexes.subjectIndex]);
+    const shiftedRows = subjectRowsForPosition(rows, indexes, position)
+      .filter(item => Number.isFinite(item.orderNumber) && item.orderNumber > deletedOrder)
+      .sort((a, b) => a.rowNumber - b.rowNumber);
+
+    await batchUpdateSpreadsheet(spreadsheetId, [{
+      deleteDimension: {
+        range: {
+          sheetId: Number(manualEntryGid),
+          dimension: "ROWS",
+          startIndex: match.rowNumber - 1,
+          endIndex: match.rowNumber
+        }
+      }
+    }], auth);
+
+    const data = shiftedRows.map(item => ({
+      range: sheetCellRange(
+        sheetName,
+        item.rowNumber > match.rowNumber ? item.rowNumber - 1 : item.rowNumber,
+        indexes.orderIndex
+      ),
+      values: [[String(item.orderNumber - 1)]]
+    }));
+    const update = await updateGoogleSheetValuesBatch(spreadsheetId, data, auth);
+    return {
+      action,
+      spreadsheetId,
+      gid: manualEntryGid,
+      rowNumber: match.rowNumber,
+      position,
+      order: String(deletedOrder),
+      previousTitle,
+      title: previousTitle,
+      shiftedCount: shiftedRows.length,
+      shiftedFromOrder: String(deletedOrder + 1),
+      updatedAt,
+      updatedCells: update.updatedCells
+    };
+  }
+
+  const position = cleanCell(payload.position);
+  const title = cleanCell(payload.title || payload.newTitle);
+  const insertOrder = parseSubjectOrder(payload.insertOrder || payload.order);
+  if (!position) throw new Error("กรุณาเลือกตำแหน่งก่อนแทรกวิชา");
+  if (!title) throw new Error("กรุณาใส่ชื่อวิชาที่จะแทรก");
+  if (!Number.isFinite(insertOrder) || insertOrder < 1) throw new Error("ลำดับที่จะแทรกต้องเป็นตัวเลขมากกว่า 0");
+
+  const positionRows = subjectRowsForPosition(rows, indexes, position);
+  if (!positionRows.length) throw new Error("ยังไม่พบรายวิชาของตำแหน่งนี้ในชีต");
+  const duplicateAtOrder = positionRows.find(item =>
+    Number(item.orderNumber) === Number(insertOrder) &&
+    sameSheetKey(item.title, title)
+  );
+  if (duplicateAtOrder) throw new Error("มีวิชาชื่อนี้อยู่ที่ลำดับนี้แล้ว");
+
+  const shiftedRows = positionRows
+    .filter(item => Number.isFinite(item.orderNumber) && item.orderNumber >= insertOrder)
+    .sort((a, b) => a.rowNumber - b.rowNumber);
+  const lastPositionRow = positionRows.slice().sort((a, b) => a.rowNumber - b.rowNumber).at(-1);
+  const insertRowNumber = shiftedRows[0]?.rowNumber || (lastPositionRow.rowNumber + 1);
+  const templateRow = shiftedRows[0]?.row || lastPositionRow.row;
+
+  await batchUpdateSpreadsheet(spreadsheetId, [{
+    insertDimension: {
+      range: {
+        sheetId: Number(manualEntryGid),
+        dimension: "ROWS",
+        startIndex: insertRowNumber - 1,
+        endIndex: insertRowNumber
+      },
+      inheritFromBefore: insertRowNumber > 2
+    }
+  }], auth);
+
+  const insertedRow = buildInsertedSubjectRow({
+    headerLength: header.length,
+    indexes,
+    templateRow,
+    position,
+    order: insertOrder,
+    title,
+    updatedAt
+  });
+  const data = [
+    {
+      range: sheetRowRange(sheetName, insertRowNumber, header.length),
+      values: [insertedRow]
+    },
+    ...shiftedRows.map(item => {
+      const adjustedRowNumber = item.rowNumber >= insertRowNumber ? item.rowNumber + 1 : item.rowNumber;
+      return {
+        range: sheetCellRange(sheetName, adjustedRowNumber, indexes.orderIndex),
+        values: [[String(item.orderNumber + 1)]]
+      };
+    })
+  ];
+  const update = await updateGoogleSheetValuesBatch(spreadsheetId, data, auth);
+  return {
+    action,
+    spreadsheetId,
+    gid: manualEntryGid,
+    rowNumber: insertRowNumber,
+    position,
+    order: String(insertOrder),
+    title,
+    shiftedCount: shiftedRows.length,
+    shiftedFromOrder: String(insertOrder),
+    updatedAt,
+    updatedCells: update.updatedCells
+  };
+}
+
 async function updateSubjectStatus(sheetUrl, payload, auth = null) {
   const spreadsheetId = extractSpreadsheetId(sheetUrl);
   if (!spreadsheetId) throw new Error("ไม่พบ spreadsheet id");
@@ -2430,11 +2755,49 @@ function buildSubjectUpdateMessage(payload) {
   ].join("\n");
 }
 
+function buildSubjectCatalogUpdateMessage(result) {
+  if (result.action === "delete") {
+    return [
+      "อัปเดตรายวิชา",
+      `ตำแหน่ง: ${result.position || "-"}`,
+      `ลบวิชา: ${result.previousTitle || result.title || "-"}`,
+      `ลำดับเดิม: ${result.order || "-"}`,
+      result.shiftedCount
+        ? `เลื่อนลำดับเฉพาะตำแหน่งนี้ขึ้น: ${result.shiftedCount} วิชา ตั้งแต่ลำดับ ${result.shiftedFromOrder || "-"}`
+        : "ไม่ต้องเลื่อนลำดับวิชาอื่น"
+    ].join("\n");
+  }
+  if (result.action === "insert") {
+    return [
+      "อัปเดตรายวิชา",
+      `ตำแหน่ง: ${result.position || "-"}`,
+      `แทรกวิชา: ${result.title || "-"}`,
+      `ลำดับ: ${result.order || "-"}`,
+      result.shiftedCount
+        ? `เลื่อนลำดับเฉพาะตำแหน่งนี้: ${result.shiftedCount} วิชา ตั้งแต่ลำดับ ${result.shiftedFromOrder || result.order}`
+        : "ไม่ต้องเลื่อนลำดับวิชาเดิม"
+    ].join("\n");
+  }
+  return [
+    "อัปเดตรายวิชา",
+    `ตำแหน่ง: ${result.position || "-"}`,
+    `ลำดับ: ${result.order || "-"}`,
+    `แก้ชื่อเดิม: ${result.previousTitle || "-"}`,
+    `ชื่อใหม่: ${result.title || "-"}`
+  ].join("\n");
+}
+
 async function sendSubjectUpdateTelegram(sheetUrl, payload, result) {
   const telegram = await getTelegramConfig();
   if (!telegram.enabled || !telegram.configured || !telegram.sendOnManualUpdate) return null;
   const message = buildSubjectUpdateMessage(payload);
   return sendTelegramMessage(message, telegram);
+}
+
+async function sendSubjectCatalogUpdateTelegram(result) {
+  const telegram = await getTelegramConfig();
+  if (!telegram.enabled || !telegram.configured || !telegram.sendOnManualUpdate) return null;
+  return sendTelegramMessage(buildSubjectCatalogUpdateMessage(result), telegram);
 }
 
 function verifyLineSignature(rawBody, signature, config) {
@@ -2502,6 +2865,12 @@ async function sendSubjectUpdateLine(sheetUrl, payload, result) {
   const line = await getLineConfig();
   if (!line.enabled || !line.channelAccessToken || !line.targetId || !line.sendOnManualUpdate) return null;
   return pushLineMessage(buildSubjectUpdateMessage(payload), line);
+}
+
+async function sendSubjectCatalogUpdateLine(result) {
+  const line = await getLineConfig();
+  if (!line.enabled || !line.channelAccessToken || !line.targetId || !line.sendOnManualUpdate) return null;
+  return pushLineMessage(buildSubjectCatalogUpdateMessage(result), line);
 }
 
 function lineEventSourceId(source = {}) {
@@ -3603,6 +3972,21 @@ async function handleApi(req, res, url) {
       : await updateSubjectStatus(sheetUrl, body, await getSheetAuth(req));
     sendSubjectUpdateTelegram(sheetUrl, body, result).catch(() => {});
     sendSubjectUpdateLine(sheetUrl, body, result).catch(() => {});
+    sendJson(res, 200, { ok: true, ...result });
+    return true;
+  }
+
+  if (url.pathname === "/api/update-subject-catalog" && req.method === "POST") {
+    const body = await readRequestJson(req);
+    const sheetUrl = body.sheetUrl;
+    if (!sheetUrl || typeof sheetUrl !== "string") {
+      sendJson(res, 400, { ok: false, error: "sheetUrl is required" });
+      return true;
+    }
+
+    const result = await updateSubjectCatalog(sheetUrl, body, await getSheetAuth(req));
+    sendSubjectCatalogUpdateTelegram(result).catch(() => {});
+    sendSubjectCatalogUpdateLine(result).catch(() => {});
     sendJson(res, 200, { ok: true, ...result });
     return true;
   }
