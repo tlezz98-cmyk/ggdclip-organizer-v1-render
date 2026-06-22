@@ -1341,6 +1341,19 @@ function findUniqueSubjectRow(rows, indexes, payload) {
   const position = cleanCell(payload.position);
   const order = cleanCell(payload.order);
   const title = cleanCell(payload.title);
+  const requestedRowNumber = Number(payload.rowNumber || 0);
+
+  if (requestedRowNumber >= 2 && requestedRowNumber <= rows.length && Math.floor(requestedRowNumber) === requestedRowNumber) {
+    const row = rows[requestedRowNumber - 1] || [];
+    if (
+      sameSheetKey(row[indexes.positionIndex], position) &&
+      sameSheetKey(row[indexes.subjectIndex], title) &&
+      (!order || sameSheetKey(row[indexes.orderIndex], order))
+    ) {
+      return { row, rowNumber: requestedRowNumber };
+    }
+  }
+
   const matches = rows.slice(1)
     .map((row, index) => ({ row, rowNumber: index + 2 }))
     .filter(({ row }) =>
@@ -1566,13 +1579,27 @@ async function updateSubjectStatus(sheetUrl, payload, auth = null) {
   const title = cleanCell(payload.title);
   if (!position || !order || !title) throw new Error("ข้อมูลตำแหน่ง/ลำดับ/ชื่อวิชาไม่ครบ");
 
-  const matches = rows.slice(1)
-    .map((row, index) => ({ row, rowNumber: index + 2 }))
-    .filter(({ row }) =>
+  const requestedRowNumber = Number(payload.rowNumber || 0);
+  let matches = [];
+  if (requestedRowNumber >= 2 && requestedRowNumber <= rows.length && Math.floor(requestedRowNumber) === requestedRowNumber) {
+    const row = rows[requestedRowNumber - 1] || [];
+    if (
       sameSheetKey(row[positionIndex], position) &&
-      sameSheetKey(row[orderIndex], order) &&
-      sameSheetKey(row[subjectIndex], title)
-    );
+      sameSheetKey(row[subjectIndex], title) &&
+      (!order || sameSheetKey(row[orderIndex], order))
+    ) {
+      matches = [{ row, rowNumber: requestedRowNumber }];
+    }
+  }
+  if (!matches.length) {
+    matches = rows.slice(1)
+      .map((row, index) => ({ row, rowNumber: index + 2 }))
+      .filter(({ row }) =>
+        sameSheetKey(row[positionIndex], position) &&
+        sameSheetKey(row[orderIndex], order) &&
+        sameSheetKey(row[subjectIndex], title)
+      );
+  }
 
   if (matches.length !== 1) {
     throw new Error(matches.length === 0

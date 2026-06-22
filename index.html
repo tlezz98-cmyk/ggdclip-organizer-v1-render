@@ -3738,13 +3738,13 @@
 
     function renderSubjectEditActions(item) {
       if (!subjectEditMode) return "";
-      const key = escapeHtml(subjectClientKey(item));
+      const attrs = subjectDataAttrs(item);
       return `
         <div class="subject-actions">
-          <button type="button" data-action="rename-subject" data-subject-key="${key}">แก้ชื่อ</button>
-          <button type="button" data-action="insert-subject" data-placement="before" data-subject-key="${key}">แทรกก่อน</button>
-          <button type="button" data-action="insert-subject" data-placement="after" data-subject-key="${key}">แทรกหลัง</button>
-          <button class="danger-button" type="button" data-action="delete-subject" data-subject-key="${key}">ลบ</button>
+          <button type="button" data-action="rename-subject" ${attrs}>แก้ชื่อ</button>
+          <button type="button" data-action="insert-subject" data-placement="before" ${attrs}>แทรกก่อน</button>
+          <button type="button" data-action="insert-subject" data-placement="after" ${attrs}>แทรกหลัง</button>
+          <button class="danger-button" type="button" data-action="delete-subject" ${attrs}>ลบ</button>
         </div>
       `;
     }
@@ -3883,7 +3883,7 @@
       const klass = kind === "done" || kind === "pending" ? kind : "";
       const disabled = isSubjectStatusSaving(item, "clip") ? "disabled" : "";
       return `
-        <select class="status-select ${klass}" ${disabled} data-action="change-subject-status" data-status-type="clip" data-subject-key="${escapeHtml(subjectClientKey(item))}" title="เปลี่ยนสถานะลิงก์คลิป">
+        <select class="status-select ${klass}" ${disabled} data-action="change-subject-status" data-status-type="clip" ${subjectDataAttrs(item)} title="เปลี่ยนสถานะลิงก์คลิป">
           <option value="ยังไม่ลงลิงก์" ${raw === "ยังไม่ลงลิงก์" ? "selected" : ""}>ยังไม่ลงลิงก์</option>
           <option value="ลงลิงก์แล้ว" ${raw === "ลงลิงก์แล้ว" ? "selected" : ""}>ลงลิงก์แล้ว</option>
         </select>
@@ -3896,7 +3896,7 @@
       const klass = kind === "done" || kind === "pending" ? kind : "";
       const disabled = isSubjectStatusSaving(item, "document") ? "disabled" : "";
       return `
-        <select class="status-select ${klass}" ${disabled} data-action="change-subject-status" data-status-type="document" data-subject-key="${escapeHtml(subjectClientKey(item))}" title="เปลี่ยนสถานะเอกสาร">
+        <select class="status-select ${klass}" ${disabled} data-action="change-subject-status" data-status-type="document" ${subjectDataAttrs(item)} title="เปลี่ยนสถานะเอกสาร">
           <option value="ยังไม่ลงลิงก์" ${raw === "ยังไม่ลงลิงก์" ? "selected" : ""}>ยังไม่ลงลิงก์</option>
           <option value="ลงลิงก์แล้ว" ${raw === "ลงลิงก์แล้ว" ? "selected" : ""}>ลงลิงก์แล้ว</option>
         </select>
@@ -3969,12 +3969,39 @@
       document.getElementById("appStatus").textContent = message;
     }
 
+    function normalizeSubjectIdentity(value) {
+      return String(value || "").replace(/\s+/g, " ").trim();
+    }
+
     function subjectClientKey(item) {
-      return [subjectPositionName(item), item?.no || item?.sheet?.order || "", item?.title || ""].map(value => String(value || "").trim()).join("||");
+      return [subjectPositionName(item), item?.no || item?.sheet?.order || "", item?.title || ""].map(normalizeSubjectIdentity).join("||");
     }
 
     function findSubjectByClientKey(key) {
-      return subjects.find(item => subjectClientKey(item) === key);
+      const normalizedKey = String(key || "").split("||").map(normalizeSubjectIdentity).join("||");
+      return subjects.find(item => subjectClientKey(item) === normalizedKey);
+    }
+
+    function subjectSheetRowNumber(item) {
+      return String(item?.sheet?.rowNumber || item?.rowNumber || "").trim();
+    }
+
+    function subjectDataAttrs(item) {
+      const rowNumber = subjectSheetRowNumber(item);
+      return `data-subject-key="${escapeHtml(subjectClientKey(item))}"${rowNumber ? ` data-subject-row="${escapeHtml(rowNumber)}"` : ""}`;
+    }
+
+    function findSubjectFromElement(element) {
+      const rowNumber = String(element?.dataset?.subjectRow || "").trim();
+      if (rowNumber) {
+        const item = subjects.find(row => subjectSheetRowNumber(row) === rowNumber);
+        if (item) return item;
+      }
+      return findSubjectByClientKey(element?.dataset?.subjectKey || "");
+    }
+
+    function showSubjectLookupError() {
+      openResultModal("แก้ไขวิชา", `<div class="warning">หาแถววิชาไม่เจอ กรุณากดโหลดรายวิชาใหม่ แล้วลองอีกครั้ง</div>`);
     }
 
     function canonicalTwoStateStatus(kind) {
@@ -4055,7 +4082,7 @@
     }
 
     async function changeSubjectSheetStatus(control) {
-      const item = findSubjectByClientKey(control.dataset.subjectKey || "");
+      const item = findSubjectFromElement(control);
       const statusType = control.dataset.statusType;
       if (!item || !["clip", "document"].includes(statusType)) return;
       const currentKind = statusType === "clip" ? getLinkStatusKind(item) : getSheetDocumentStatusKind(item);
@@ -4201,6 +4228,7 @@
       const previewText = action === "insert"
         ? `ระบบจะเลื่อนเลขลำดับเฉพาะตำแหน่ง ${position} ตั้งแต่ลำดับ ${insertOrder} เป็นต้นไป`
         : `ระบบจะแก้ชื่อวิชาลำดับ ${insertOrder} ในตำแหน่ง ${position}`;
+      const subjectAttrs = item ? subjectDataAttrs(item) : `data-subject-key=""`;
 
       openResultModal(modalTitle, `
         <div class="preview-line"><strong>ตำแหน่ง</strong><span>${escapeHtml(position)}</span></div>
@@ -4215,7 +4243,7 @@
         </div>
         <div class="warning">${escapeHtml(previewText)}</div>
         <div class="toolbar">
-          <button class="primary" type="button" data-action="save-subject-catalog" data-subject-catalog-action="${escapeHtml(action)}" data-placement="${escapeHtml(placement)}" data-subject-key="${escapeHtml(item ? subjectClientKey(item) : "")}">บันทึกลง Google Sheet</button>
+          <button class="primary" type="button" data-action="save-subject-catalog" data-subject-catalog-action="${escapeHtml(action)}" data-placement="${escapeHtml(placement)}" ${subjectAttrs}>บันทึกลง Google Sheet</button>
           <button type="button" data-action="close-modal">ยกเลิก</button>
         </div>
       `);
@@ -4224,16 +4252,16 @@
 
     function openSubjectEditMenu(item) {
       if (!item) return;
-      const key = subjectClientKey(item);
+      const attrs = subjectDataAttrs(item);
       openResultModal("แก้ไขวิชา", `
         <div class="preview-line"><strong>ลำดับ</strong><span>${escapeHtml(item.no || item.sheet?.order || "-")}</span></div>
         <div class="preview-line"><strong>วิชา</strong><span>${escapeHtml(item.title || "-")}</span></div>
         <div class="preview-line"><strong>ตำแหน่ง</strong><span>${escapeHtml(subjectPositionName(item) || "-")}</span></div>
         <div class="toolbar">
-          <button class="primary" type="button" data-action="rename-subject" data-subject-key="${escapeHtml(key)}">แก้ชื่อวิชา</button>
-          <button type="button" data-action="insert-subject" data-placement="before" data-subject-key="${escapeHtml(key)}">แทรกวิชาก่อนนี้</button>
-          <button type="button" data-action="insert-subject" data-placement="after" data-subject-key="${escapeHtml(key)}">แทรกวิชาหลังนี้</button>
-          <button class="danger-button" type="button" data-action="delete-subject" data-subject-key="${escapeHtml(key)}">ลบวิชา</button>
+          <button class="primary" type="button" data-action="rename-subject" ${attrs}>แก้ชื่อวิชา</button>
+          <button type="button" data-action="insert-subject" data-placement="before" ${attrs}>แทรกวิชาก่อนนี้</button>
+          <button type="button" data-action="insert-subject" data-placement="after" ${attrs}>แทรกวิชาหลังนี้</button>
+          <button class="danger-button" type="button" data-action="delete-subject" ${attrs}>ลบวิชา</button>
         </div>
       `);
     }
@@ -4245,14 +4273,14 @@
         return;
       }
       const order = item.no || item.sheet?.order || "";
-      const key = subjectClientKey(item);
+      const attrs = subjectDataAttrs(item);
       openResultModal("ลบวิชา", `
         <div class="warning">ยืนยันการลบวิชานี้ออกจาก Google Sheet ระบบจะเลื่อนเลขลำดับเฉพาะตำแหน่งนี้ขึ้น 1 หลังลบ</div>
         <div class="preview-line"><strong>ลำดับ</strong><span>${escapeHtml(order || "-")}</span></div>
         <div class="preview-line"><strong>วิชา</strong><span>${escapeHtml(item.title || "-")}</span></div>
         <div class="preview-line"><strong>ตำแหน่ง</strong><span>${escapeHtml(subjectPositionName(item) || "-")}</span></div>
         <div class="toolbar">
-          <button class="danger-button" type="button" data-action="confirm-delete-subject" data-subject-key="${escapeHtml(key)}">ยืนยันลบวิชา</button>
+          <button class="danger-button" type="button" data-action="confirm-delete-subject" ${attrs}>ยืนยันลบวิชา</button>
           <button type="button" data-action="close-modal">ยกเลิก</button>
         </div>
       `);
@@ -4261,7 +4289,7 @@
     async function saveSubjectCatalogFromModal(button) {
       if (subjectCatalogSaveInFlight) return;
       const action = button.dataset.subjectCatalogAction;
-      const item = findSubjectByClientKey(button.dataset.subjectKey || "");
+      const item = findSubjectFromElement(button);
       const position = editablePositionName();
       const titleInput = document.getElementById("subjectCatalogTitleInput");
       const orderInput = document.getElementById("subjectCatalogOrderInput");
@@ -4278,6 +4306,7 @@
           sheetUrl,
           action,
           position,
+          rowNumber: item.sheet?.rowNumber || item.rowNumber || "",
           order: item.no || item.sheet?.order || "",
           title: item.title || "",
           newTitle: title
@@ -4323,7 +4352,7 @@
 
     async function deleteSubjectFromModal(button) {
       if (subjectCatalogSaveInFlight) return;
-      const item = findSubjectByClientKey(button.dataset.subjectKey || "");
+      const item = findSubjectFromElement(button);
       const position = editablePositionName();
       const sheetUrl = document.getElementById("sheetUrl").value.trim();
       if (!sheetUrl) throw new Error("ยังไม่ได้ใส่ Google Sheet URL");
@@ -4343,6 +4372,7 @@
             sheetUrl,
             action: "delete",
             position,
+            rowNumber: item.sheet?.rowNumber || item.rowNumber || "",
             order: item.no || item.sheet?.order || "",
             title: item.title || ""
           })
@@ -7572,22 +7602,25 @@
 
       const renameSubjectButton = event.target.closest("[data-action='rename-subject']");
       if (renameSubjectButton) {
-        const item = findSubjectByClientKey(renameSubjectButton.dataset.subjectKey || "");
+        const item = findSubjectFromElement(renameSubjectButton);
         if (item) openSubjectCatalogEditor("rename", item);
+        else showSubjectLookupError();
         return;
       }
 
       const insertSubjectButton = event.target.closest("[data-action='insert-subject']");
       if (insertSubjectButton) {
-        const item = findSubjectByClientKey(insertSubjectButton.dataset.subjectKey || "");
+        const item = findSubjectFromElement(insertSubjectButton);
         if (item) openSubjectCatalogEditor("insert", item, insertSubjectButton.dataset.placement || "after");
+        else showSubjectLookupError();
         return;
       }
 
       const deleteSubjectButton = event.target.closest("[data-action='delete-subject']");
       if (deleteSubjectButton) {
-        const item = findSubjectByClientKey(deleteSubjectButton.dataset.subjectKey || "");
+        const item = findSubjectFromElement(deleteSubjectButton);
         if (item) openSubjectDeleteConfirm(item);
+        else showSubjectLookupError();
         return;
       }
 
@@ -7605,20 +7638,23 @@
       }
       const renameSubjectButton = event.target.closest("[data-action='rename-subject']");
       if (renameSubjectButton) {
-        const item = findSubjectByClientKey(renameSubjectButton.dataset.subjectKey || "");
+        const item = findSubjectFromElement(renameSubjectButton);
         if (item) openSubjectCatalogEditor("rename", item);
+        else showSubjectLookupError();
         return;
       }
       const insertSubjectButton = event.target.closest("[data-action='insert-subject']");
       if (insertSubjectButton) {
-        const item = findSubjectByClientKey(insertSubjectButton.dataset.subjectKey || "");
+        const item = findSubjectFromElement(insertSubjectButton);
         if (item) openSubjectCatalogEditor("insert", item, insertSubjectButton.dataset.placement || "after");
+        else showSubjectLookupError();
         return;
       }
       const deleteSubjectButton = event.target.closest("[data-action='delete-subject']");
       if (deleteSubjectButton) {
-        const item = findSubjectByClientKey(deleteSubjectButton.dataset.subjectKey || "");
+        const item = findSubjectFromElement(deleteSubjectButton);
         if (item) openSubjectDeleteConfirm(item);
+        else showSubjectLookupError();
         return;
       }
       const noteButton = event.target.closest("[data-action='edit-note']");
@@ -7685,6 +7721,30 @@
       const closeModalButton = event.target.closest("[data-action='close-modal']");
       if (closeModalButton) {
         closeModal();
+        return;
+      }
+
+      const renameSubjectButton = event.target.closest("[data-action='rename-subject']");
+      if (renameSubjectButton) {
+        const item = findSubjectFromElement(renameSubjectButton);
+        if (item) openSubjectCatalogEditor("rename", item);
+        else showSubjectLookupError();
+        return;
+      }
+
+      const insertSubjectButton = event.target.closest("[data-action='insert-subject']");
+      if (insertSubjectButton) {
+        const item = findSubjectFromElement(insertSubjectButton);
+        if (item) openSubjectCatalogEditor("insert", item, insertSubjectButton.dataset.placement || "after");
+        else showSubjectLookupError();
+        return;
+      }
+
+      const deleteSubjectButton = event.target.closest("[data-action='delete-subject']");
+      if (deleteSubjectButton) {
+        const item = findSubjectFromElement(deleteSubjectButton);
+        if (item) openSubjectDeleteConfirm(item);
+        else showSubjectLookupError();
         return;
       }
 
