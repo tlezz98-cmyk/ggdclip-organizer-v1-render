@@ -1587,6 +1587,10 @@ async function updateSubjectStatusViaAppsScript(sheetUrl, payload, writer) {
   };
 }
 
+async function updateSubjectCatalogViaAppsScript(sheetUrl, payload, writer) {
+  return updateSubjectStatusViaAppsScript(sheetUrl, payload, writer);
+}
+
 async function fetchSheetCsv(spreadsheetId, gid, auth = null) {
   const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${gid}`;
   const publicCsv = await fetchPublicCsv(csvUrl);
@@ -3984,7 +3988,10 @@ async function handleApi(req, res, url) {
       return true;
     }
 
-    const result = await updateSubjectCatalog(sheetUrl, body, await getSheetAuth(req));
+    const writer = await getAppsScriptStatusWriterConfig();
+    const result = writer.configured
+      ? await updateSubjectCatalogViaAppsScript(sheetUrl, body, writer)
+      : await updateSubjectCatalog(sheetUrl, body, await getSheetAuth(req));
     sendSubjectCatalogUpdateTelegram(result).catch(() => {});
     sendSubjectCatalogUpdateLine(result).catch(() => {});
     sendJson(res, 200, { ok: true, ...result });

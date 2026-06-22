@@ -4078,15 +4078,19 @@
     }
 
     function canWriteSubjectCatalogToSheet() {
-      return Boolean(lastAuthStatus?.user || lastAuthStatus?.auth?.serviceAccount?.configured);
+      return Boolean(
+        lastAuthStatus?.user ||
+        lastAuthStatus?.auth?.serviceAccount?.configured ||
+        lastAuthStatus?.auth?.appsScriptStatusWriter?.configured
+      );
     }
 
     function showSubjectCatalogAuthHelp() {
       openResultModal("แก้ไขวิชา", `
         <div class="warning">ตอนนี้เซิร์ฟเวอร์นี้ยังไม่มีสิทธิ์แก้ Google Sheet ที่เป็น private</div>
         <div class="scan-summary">
-          <div>ใช้ฟีเจอร์แก้ชื่อ/แทรก/ลบวิชาได้เมื่อเปิดจากเว็บออนไลน์ที่ตั้งค่า Service Account แล้ว หรือเครื่องนี้ต้องตั้งค่า Google ก่อน</div>
-          <div>ถ้าจะลองบนเครื่องนี้ ให้ไปที่ ตั้งค่า / เครื่องมือขั้นสูง แล้วตั้งค่า Google Service Account ให้เรียบร้อย</div>
+          <div>ใช้ฟีเจอร์แก้ชื่อ/แทรก/ลบวิชาได้เมื่อเว็บมี Apps Script Writer หรือ Service Account ที่เขียนชีตได้</div>
+          <div>ถ้าจะลองบนเครื่องนี้ ให้ไปที่ ตั้งค่า / เครื่องมือขั้นสูง แล้วตั้งค่า Google ให้เรียบร้อยก่อน</div>
         </div>
         <div class="toolbar">
           <button type="button" data-action="close-modal">เข้าใจแล้ว</button>
