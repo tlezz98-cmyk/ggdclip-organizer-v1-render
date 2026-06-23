@@ -129,20 +129,46 @@ function updateSubjectCatalog(payload) {
 
   if (action === "rename") {
     const newTitle = cleanCell(payload.newTitle || "");
+    const newOrderText = cleanCell(payload.newOrder || payload.order || "");
+    const newOrder = parseSubjectOrder(newOrderText);
     if (!newTitle) throw new Error("Missing new subject title");
+    if (!isFinite(newOrder) || newOrder < 1) throw new Error("Invalid subject order");
     const match = findUniqueSubjectRow(values, indexes, payload);
     const previousTitle = cleanCell(match.row[indexes.subjectIndex]);
-    if (sameSheetKey(previousTitle, newTitle)) throw new Error("New subject title is unchanged");
+    const previousOrder = cleanCell(match.row[indexes.orderIndex]);
+    const position = cleanCell(payload.position || match.row[indexes.positionIndex]);
+    const titleChanged = !sameSheetKey(previousTitle, newTitle);
+    const orderChanged = !sameSheetKey(previousOrder, newOrderText);
+    if (!titleChanged && !orderChanged) throw new Error("Subject title and order are unchanged");
+    if (orderChanged) {
+      const duplicateOrder = subjectRowsForPosition(values, indexes, position).find(function(item) {
+        return item.rowNumber !== match.rowNumber &&
+          isFinite(item.orderNumber) &&
+          Number(item.orderNumber) === Number(newOrder);
+      });
+      if (duplicateOrder) throw new Error("Another subject already uses this order");
+    }
 
-    const latestUpdateItem = TH_SUBJECT_RENAME + ": " + previousTitle + " -> " + newTitle;
+    const latestParts = [];
+    if (titleChanged) latestParts.push(TH_SUBJECT_RENAME + ": " + previousTitle + " -> " + newTitle);
+    if (orderChanged) latestParts.push("แก้ลำดับ: " + previousOrder + " -> " + newOrderText);
+    const latestUpdateItem = latestParts.join(" · ");
     const updateHistory = buildUpdateHistoryValue(match.row[indexes.updateHistoryIndex], {
       at: updatedAt,
       type: "subject-rename",
-      status: cleanCell(payload.order || match.row[indexes.orderIndex]),
-      title: previousTitle + " -> " + newTitle
+      status: orderChanged ? previousOrder + " -> " + newOrderText : previousOrder,
+      title: titleChanged ? previousTitle + " -> " + newTitle : newTitle
     });
 
-    sheet.getRange(match.rowNumber, indexes.subjectIndex + 1).setValue(newTitle);
+    let updatedCells = 3;
+    if (titleChanged) {
+      sheet.getRange(match.rowNumber, indexes.subjectIndex + 1).setValue(newTitle);
+      updatedCells++;
+    }
+    if (orderChanged) {
+      sheet.getRange(match.rowNumber, indexes.orderIndex + 1).setValue(newOrderText);
+      updatedCells++;
+    }
     sheet.getRange(match.rowNumber, indexes.latestUpdateIndex + 1).setValue(updatedAt);
     sheet.getRange(match.rowNumber, indexes.latestUpdateItemIndex + 1).setValue(latestUpdateItem);
     sheet.getRange(match.rowNumber, indexes.updateHistoryIndex + 1).setValue(updateHistory);
@@ -153,12 +179,13 @@ function updateSubjectCatalog(payload) {
       spreadsheetId,
       sheetName: sheet.getName(),
       rowNumber: match.rowNumber,
-      position: cleanCell(payload.position || match.row[indexes.positionIndex]),
-      order: cleanCell(payload.order || match.row[indexes.orderIndex]),
+      position,
+      order: newOrderText,
+      previousOrder,
       previousTitle,
       title: newTitle,
       updatedAt,
-      updatedCells: 4
+      updatedCells
     };
   }
 

@@ -1388,29 +1388,55 @@ async function updateSubjectCatalog(sheetUrl, payload, auth = null) {
 
   if (action === "rename") {
     const newTitle = cleanCell(payload.newTitle);
+    const newOrderText = cleanCell(payload.newOrder || payload.order);
+    const newOrder = parseSubjectOrder(newOrderText);
     if (!newTitle) throw new Error("กรุณาใส่ชื่อวิชาใหม่");
+    if (!Number.isFinite(newOrder) || newOrder < 1) throw new Error("ลำดับต้องเป็นตัวเลขมากกว่า 0");
     const match = findUniqueSubjectRow(rows, indexes, payload);
     const previousTitle = cleanCell(match.row[indexes.subjectIndex]);
-    if (sameSheetKey(previousTitle, newTitle)) throw new Error("ชื่อวิชาใหม่เหมือนเดิม");
+    const previousOrder = cleanCell(match.row[indexes.orderIndex]);
+    const position = cleanCell(payload.position || match.row[indexes.positionIndex]);
+    const titleChanged = !sameSheetKey(previousTitle, newTitle);
+    const orderChanged = !sameSheetKey(previousOrder, newOrderText);
+    if (!titleChanged && !orderChanged) throw new Error("ชื่อวิชาและลำดับใหม่เหมือนเดิม");
+    if (orderChanged) {
+      const duplicateOrder = subjectRowsForPosition(rows, indexes, position).find(item =>
+        item.rowNumber !== match.rowNumber &&
+        Number.isFinite(item.orderNumber) &&
+        Number(item.orderNumber) === Number(newOrder)
+      );
+      if (duplicateOrder) throw new Error("มีวิชาอื่นในตำแหน่งนี้ใช้ลำดับนี้แล้ว");
+    }
 
-    const data = [
-      {
+    const data = [];
+    if (titleChanged) {
+      data.push({
         range: sheetCellRange(sheetName, match.rowNumber, indexes.subjectIndex),
         values: [[newTitle]]
-      }
-    ];
+      });
+    }
+    if (orderChanged) {
+      data.push({
+        range: sheetCellRange(sheetName, match.rowNumber, indexes.orderIndex),
+        values: [[newOrderText]]
+      });
+    }
+    const latestUpdateItem = [
+      titleChanged ? `แก้ชื่อวิชา: ${previousTitle} → ${newTitle}` : "",
+      orderChanged ? `แก้ลำดับ: ${previousOrder} → ${newOrderText}` : ""
+    ].filter(Boolean).join(" · ");
     if (indexes.latestUpdateIndex >= 0) {
       data.push({ range: sheetCellRange(sheetName, match.rowNumber, indexes.latestUpdateIndex), values: [[updatedAt]] });
     }
     if (indexes.latestUpdateItemIndex >= 0) {
-      data.push({ range: sheetCellRange(sheetName, match.rowNumber, indexes.latestUpdateItemIndex), values: [[`แก้ชื่อวิชา: ${previousTitle} → ${newTitle}`]] });
+      data.push({ range: sheetCellRange(sheetName, match.rowNumber, indexes.latestUpdateItemIndex), values: [[latestUpdateItem]] });
     }
     if (indexes.updateHistoryIndex >= 0) {
       const history = buildUpdateHistoryValue(match.row[indexes.updateHistoryIndex], {
         at: updatedAt,
         type: "subject-rename",
-        status: cleanCell(payload.order),
-        title: `${previousTitle} → ${newTitle}`
+        status: orderChanged ? `${previousOrder} → ${newOrderText}` : previousOrder,
+        title: titleChanged ? `${previousTitle} → ${newTitle}` : newTitle
       });
       data.push({ range: sheetCellRange(sheetName, match.rowNumber, indexes.updateHistoryIndex), values: [[history]] });
     }
@@ -1420,8 +1446,9 @@ async function updateSubjectCatalog(sheetUrl, payload, auth = null) {
       spreadsheetId,
       gid: manualEntryGid,
       rowNumber: match.rowNumber,
-      position: cleanCell(payload.position),
-      order: cleanCell(payload.order),
+      position,
+      order: newOrderText,
+      previousOrder,
       previousTitle,
       title: newTitle,
       updatedAt,

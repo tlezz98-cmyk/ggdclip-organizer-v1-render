@@ -4227,7 +4227,7 @@
         : placement === "before" ? "แทรกวิชาก่อนรายการนี้" : item ? "แทรกวิชาหลังรายการนี้" : "เพิ่มวิชาท้ายตำแหน่ง";
       const previewText = action === "insert"
         ? `ระบบจะเลื่อนเลขลำดับเฉพาะตำแหน่ง ${position} ตั้งแต่ลำดับ ${insertOrder} เป็นต้นไป`
-        : `ระบบจะแก้ชื่อวิชาลำดับ ${insertOrder} ในตำแหน่ง ${position}`;
+        : `ระบบจะบันทึกชื่อวิชาและลำดับในตำแหน่ง ${position}`;
       const subjectAttrs = item ? subjectDataAttrs(item) : `data-subject-key=""`;
 
       openResultModal(modalTitle, `
@@ -4239,7 +4239,7 @@
         </div>
         <div class="field">
           <label for="subjectCatalogOrderInput">ลำดับ</label>
-          <input id="subjectCatalogOrderInput" class="control" type="number" min="1" step="1" value="${escapeHtml(insertOrder)}" ${action === "rename" ? "readonly" : ""}>
+          <input id="subjectCatalogOrderInput" class="control" type="number" min="1" step="any" inputmode="decimal" value="${escapeHtml(insertOrder)}">
         </div>
         <div class="warning">${escapeHtml(previewText)}</div>
         <div class="toolbar">
@@ -4299,6 +4299,9 @@
       if (!sheetUrl) throw new Error("ยังไม่ได้ใส่ Google Sheet URL");
       if (!position) throw new Error("กรุณาเลือกตำแหน่งเดียวก่อน");
       if (!title) throw new Error("กรุณาใส่ชื่อวิชา");
+      if (!insertOrder) throw new Error("กรุณาใส่ลำดับ");
+      const orderNumber = Number(String(insertOrder).replace(/,/g, ""));
+      if (!Number.isFinite(orderNumber) || orderNumber <= 0) throw new Error("ลำดับต้องเป็นตัวเลขมากกว่า 0");
       if (action === "rename" && !item) throw new Error("ไม่พบวิชาที่จะแก้ชื่อ");
 
       const payload = action === "rename"
@@ -4309,6 +4312,7 @@
           rowNumber: item.sheet?.rowNumber || item.rowNumber || "",
           order: item.no || item.sheet?.order || "",
           title: item.title || "",
+          newOrder: insertOrder,
           newTitle: title
         }
         : {
@@ -4322,7 +4326,7 @@
       subjectCatalogSaveInFlight = true;
       button.disabled = true;
       button.textContent = "กำลังบันทึก...";
-      setStatus(action === "rename" ? "สถานะ: กำลังแก้ชื่อวิชาใน Google Sheet" : "สถานะ: กำลังแทรกวิชาใน Google Sheet");
+      setStatus(action === "rename" ? "สถานะ: กำลังแก้ชื่อ/ลำดับวิชาใน Google Sheet" : "สถานะ: กำลังแทรกวิชาใน Google Sheet");
 
       try {
         const response = await fetch("/api/update-subject-catalog", {
@@ -4341,7 +4345,7 @@
           return;
         }
         setStatus(action === "rename"
-          ? `สถานะ: แก้ชื่อวิชาเป็น "${title}" แล้ว`
+          ? `สถานะ: บันทึก "${title}" ที่ลำดับ ${insertOrder} แล้ว`
           : `สถานะ: แทรกวิชา "${title}" ที่ลำดับ ${insertOrder} แล้ว`);
       } finally {
         subjectCatalogSaveInFlight = false;
