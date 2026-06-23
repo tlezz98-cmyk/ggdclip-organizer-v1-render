@@ -444,8 +444,17 @@ async function getAppsScriptSubjectCatalogWriterStatus(config) {
         (Array.isArray(json.supportedActions) && json.supportedActions.includes("rename"))
       )
     );
+    const orderSupported = Boolean(
+      supported &&
+      (
+        json.subjectCatalogOrderWriter ||
+        (Array.isArray(json.supportedFields) && json.supportedFields.includes("order"))
+      )
+    );
     status = {
       configured: supported,
+      orderConfigured: orderSupported,
+      supportedFields: Array.isArray(json.supportedFields) ? json.supportedFields : [],
       checkedAt: new Date(now).toISOString(),
       error: supported ? "" : (json.error || `Apps Script writer is not ready (${response.status})`)
     };
@@ -4338,15 +4347,20 @@ async function handleApi(req, res, url) {
     }
 
     const writer = await getAppsScriptStatusWriterConfig();
+    const editsSubjectOrder = body.action === "rename" &&
+      cleanCell(body.newOrder || body.order) &&
+      !sameSheetKey(cleanCell(body.newOrder || body.order), cleanCell(body.order));
     let result;
     if (writer.configured) {
       const catalogWriter = await getAppsScriptSubjectCatalogWriterStatus(writer);
-      if (catalogWriter.configured) {
+      if (catalogWriter.configured && (!editsSubjectOrder || catalogWriter.orderConfigured)) {
         result = await updateSubjectCatalogViaAppsScript(sheetUrl, body, writer);
       } else {
         const auth = await getSheetAuth(req);
         if (!auth?.accessToken) {
-          throw new Error("Apps Script Writer ยังไม่รองรับการแก้ชื่อ/แทรก/ลบวิชา กรุณาอัปเดต Apps Script deployment ก่อน");
+          throw new Error(editsSubjectOrder
+            ? "Apps Script Writer ยังไม่รองรับการแก้เลขลำดับ กรุณาอัปเดต Apps Script deployment ก่อน"
+            : "Apps Script Writer ยังไม่รองรับการแก้ชื่อ/แทรก/ลบวิชา กรุณาอัปเดต Apps Script deployment ก่อน");
         }
         result = await updateSubjectCatalog(sheetUrl, body, auth);
       }

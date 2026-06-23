@@ -78,7 +78,9 @@ function doPost(e) {
       return jsonOutput({
         ok: true,
         subjectCatalogWriter: true,
-        supportedActions: ["rename", "insert", "delete"]
+        subjectCatalogOrderWriter: true,
+        supportedActions: ["rename", "insert", "delete"],
+        supportedFields: ["title", "order"]
       });
     }
     const result = action === "rename" || action === "insert" || action === "delete"
