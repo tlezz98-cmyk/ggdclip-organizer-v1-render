@@ -523,6 +523,7 @@ async function getTelegramConfig() {
     allowedUserId: String(process.env.TELEGRAM_ALLOWED_USER_ID || telegram.allowedUserId || "").trim(),
     aiEnabled: ai.enabled,
     aiConfigured: ai.configured,
+    aiProvider: ai.provider,
     aiModel: ai.model
   };
 }
@@ -539,6 +540,7 @@ function publicTelegramConfig(config) {
     allowNaturalLanguage: config.allowNaturalLanguage !== false,
     allowedUserConfigured: Boolean(config.allowedUserId),
     aiEnabled: Boolean(config.aiEnabled && config.aiConfigured),
+    aiProvider: config.aiProvider || "",
     webhookReady: Boolean(config.configured && config.publicBaseUrl && config.webhookSecret)
   };
 }
@@ -548,14 +550,24 @@ function truthyEnv(value) {
 }
 
 function getOpenAiConfig() {
-  const apiKey = String(process.env.OPENAI_API_KEY || "").trim();
+  const provider = String(process.env.TELEGRAM_AI_PROVIDER || process.env.AI_PROVIDER || (process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY ? "qwen" : "openai")).trim().toLowerCase();
+  const isQwen = provider === "qwen" || provider === "dashscope";
+  const apiKey = String(isQwen
+    ? process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY || process.env.OPENAI_API_KEY || ""
+    : process.env.OPENAI_API_KEY || "").trim();
   const explicitEnabled = process.env.TELEGRAM_AI_ENABLED || process.env.OPENAI_ENABLED || "";
   const maxOutputTokens = Number(process.env.TELEGRAM_AI_MAX_OUTPUT_TOKENS || process.env.OPENAI_MAX_OUTPUT_TOKENS || 900);
+  const baseUrl = String(isQwen
+    ? process.env.TELEGRAM_AI_BASE_URL || process.env.QWEN_BASE_URL || process.env.DASHSCOPE_BASE_URL || "https://dashscope-us.aliyuncs.com/compatible-mode/v1"
+    : process.env.TELEGRAM_AI_BASE_URL || process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/+$/, "");
   return {
+    provider: isQwen ? "qwen" : "openai",
     enabled: explicitEnabled ? truthyEnv(explicitEnabled) : Boolean(apiKey),
     configured: Boolean(apiKey),
     apiKey,
-    model: String(process.env.TELEGRAM_AI_MODEL || process.env.OPENAI_MODEL || "gpt-5.5").trim(),
+    baseUrl,
+    apiMode: isQwen ? "chat-completions" : "responses",
+    model: String(process.env.TELEGRAM_AI_MODEL || (isQwen ? process.env.QWEN_MODEL : process.env.OPENAI_MODEL) || (isQwen ? "qwen-plus" : "gpt-5.5")).trim(),
     maxOutputTokens: Number.isFinite(maxOutputTokens) && maxOutputTokens > 0 ? maxOutputTokens : 900
   };
 }
@@ -3120,7 +3132,42 @@ async function answerTelegramQuestionWithAi(text, monitor) {
   const ai = getOpenAiConfig();
   if (!ai.enabled || !ai.configured) return "";
   const context = buildTelegramAiContext(text, monitor);
-  const response = await fetch("https://api.openai.com/v1/responses", {
+  const instructions = [
+    "คุณคือ AI ผู้ช่วยรายงานงานซุนวูใน Telegram",
+    "ตอบภาษาไทยแบบกระชับ เหมือนผู้ช่วยส่วนตัว ไม่ต้องบอกว่าตัวเองเป็นบอท",
+    "ใช้เฉพาะข้อมูลใน JSON ที่ให้ ถ้าไม่มีข้อมูลให้บอกว่าไม่พบในข้อมูลล่าสุด ห้ามเดา",
+    "ให้ตอบตรงคำถามก่อน แล้วค่อยสรุปรายการสำคัญ",
+    "ถ้าคำถามเกี่ยวกับงานที่ควรทำก่อน ให้จัดลำดับจากงานด่วนและตำแหน่งที่มีคลิปรอตรวจ",
+    "ไม่ต้องใส่ Markdown ตาราง เพราะ Telegram อ่านยาก",
+    "ความยาวไม่เกิน 3,500 ตัวอักษร"
+  ].join("\n");
+  const userContent = `คำถามจากผู้ใช้:\n${text}\n\nข้อมูลรายงานล่าสุดแบบ JSON:\n${JSON.stringify(context)}`;
+
+  if (ai.apiMode === "chat-completions") {
+    const response = await fetch(`${ai.baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${ai.apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: ai.model,
+        messages: [
+          { role: "system", content: instructions },
+          { role: "user", content: userContent }
+        ],
+        max_tokens: ai.maxOutputTokens,
+        temperature: 0.2
+      })
+    });
+    const json = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(json.error?.message || `Qwen API failed (${response.status})`);
+    }
+    return String(json.choices?.[0]?.message?.content || "").trim().slice(0, 3900);
+  }
+
+  const response = await fetch(`${ai.baseUrl}/responses`, {
     method: "POST",
     headers: {
       "Authorization": `Bearer ${ai.apiKey}`,
@@ -3133,19 +3180,11 @@ async function answerTelegramQuestionWithAi(text, monitor) {
       input: [
         {
           role: "developer",
-          content: [
-            "คุณคือ AI ผู้ช่วยรายงานงานซุนวูใน Telegram",
-            "ตอบภาษาไทยแบบกระชับ เหมือนผู้ช่วยส่วนตัว ไม่ต้องบอกว่าตัวเองเป็นบอท",
-            "ใช้เฉพาะข้อมูลใน JSON ที่ให้ ถ้าไม่มีข้อมูลให้บอกว่าไม่พบในข้อมูลล่าสุด ห้ามเดา",
-            "ให้ตอบตรงคำถามก่อน แล้วค่อยสรุปรายการสำคัญ",
-            "ถ้าคำถามเกี่ยวกับงานที่ควรทำก่อน ให้จัดลำดับจากงานด่วนและตำแหน่งที่มีคลิปรอตรวจ",
-            "ไม่ต้องใส่ Markdown ตาราง เพราะ Telegram อ่านยาก",
-            "ความยาวไม่เกิน 3,500 ตัวอักษร"
-          ].join("\n")
+          content: instructions
         },
         {
           role: "user",
-          content: `คำถามจากผู้ใช้:\n${text}\n\nข้อมูลรายงานล่าสุดแบบ JSON:\n${JSON.stringify(context)}`
+          content: userContent
         }
       ]
     })
@@ -3162,7 +3201,7 @@ async function answerTelegramQuestion(text, monitor) {
     const aiAnswer = await answerTelegramQuestionWithAi(text, monitor);
     if (aiAnswer) return aiAnswer;
   } catch (error) {
-    console.warn(`OpenAI Telegram answer failed: ${error.message}`);
+    console.warn(`AI Telegram answer failed: ${error.message}`);
   }
   return answerTelegramQuestionFallback(text, monitor);
 }
