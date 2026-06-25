@@ -30,9 +30,11 @@ services:
       - key: TELEGRAM_AI_ENABLED
         value: "true"
       - key: TELEGRAM_AI_PROVIDER
-        value: qwen
+        value: gemini
       - key: TELEGRAM_AI_MODEL
-        value: qwen-plus
+        value: gemini-2.5-flash-lite
+      - key: GEMINI_API_KEY
+        sync: false
       - key: QWEN_BASE_URL
         value: https://dashscope-us.aliyuncs.com/compatible-mode/v1
       - key: QWEN_API_KEY

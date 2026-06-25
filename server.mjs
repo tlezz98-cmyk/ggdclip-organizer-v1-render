@@ -550,24 +550,29 @@ function truthyEnv(value) {
 }
 
 function getOpenAiConfig() {
-  const provider = String(process.env.TELEGRAM_AI_PROVIDER || process.env.AI_PROVIDER || (process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY ? "qwen" : "openai")).trim().toLowerCase();
+  const provider = String(process.env.TELEGRAM_AI_PROVIDER || process.env.AI_PROVIDER || (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY ? "gemini" : process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY ? "qwen" : "openai")).trim().toLowerCase();
   const isQwen = provider === "qwen" || provider === "dashscope";
-  const apiKey = String(isQwen
+  const isGemini = provider === "gemini" || provider === "google";
+  const apiKey = String(isGemini
+    ? process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || ""
+    : isQwen
     ? process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY || process.env.OPENAI_API_KEY || ""
     : process.env.OPENAI_API_KEY || "").trim();
   const explicitEnabled = process.env.TELEGRAM_AI_ENABLED || process.env.OPENAI_ENABLED || "";
   const maxOutputTokens = Number(process.env.TELEGRAM_AI_MAX_OUTPUT_TOKENS || process.env.OPENAI_MAX_OUTPUT_TOKENS || 900);
-  const baseUrl = String(isQwen
+  const baseUrl = String(isGemini
+    ? process.env.TELEGRAM_AI_BASE_URL || process.env.GEMINI_BASE_URL || "https://generativelanguage.googleapis.com/v1beta"
+    : isQwen
     ? process.env.TELEGRAM_AI_BASE_URL || process.env.QWEN_BASE_URL || process.env.DASHSCOPE_BASE_URL || "https://dashscope-us.aliyuncs.com/compatible-mode/v1"
     : process.env.TELEGRAM_AI_BASE_URL || process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/+$/, "");
   return {
-    provider: isQwen ? "qwen" : "openai",
+    provider: isGemini ? "gemini" : isQwen ? "qwen" : "openai",
     enabled: explicitEnabled ? truthyEnv(explicitEnabled) : Boolean(apiKey),
     configured: Boolean(apiKey),
     apiKey,
     baseUrl,
-    apiMode: isQwen ? "chat-completions" : "responses",
-    model: String(process.env.TELEGRAM_AI_MODEL || (isQwen ? process.env.QWEN_MODEL : process.env.OPENAI_MODEL) || (isQwen ? "qwen-plus" : "gpt-5.5")).trim(),
+    apiMode: isGemini ? "gemini-generate-content" : isQwen ? "chat-completions" : "responses",
+    model: String(process.env.TELEGRAM_AI_MODEL || (isGemini ? process.env.GEMINI_MODEL : isQwen ? process.env.QWEN_MODEL : process.env.OPENAI_MODEL) || (isGemini ? "gemini-2.5-flash-lite" : isQwen ? "qwen-plus" : "gpt-5.5")).trim(),
     maxOutputTokens: Number.isFinite(maxOutputTokens) && maxOutputTokens > 0 ? maxOutputTokens : 900
   };
 }
@@ -3128,6 +3133,16 @@ function extractOpenAiResponseText(json) {
   return parts.join("\n").trim();
 }
 
+function extractGeminiResponseText(json) {
+  const parts = [];
+  for (const candidate of json.candidates || []) {
+    for (const part of candidate.content?.parts || []) {
+      if (typeof part.text === "string") parts.push(part.text);
+    }
+  }
+  return parts.join("\n").trim();
+}
+
 async function answerTelegramQuestionWithAi(text, monitor) {
   const ai = getOpenAiConfig();
   if (!ai.enabled || !ai.configured) return "";
@@ -3142,6 +3157,34 @@ async function answerTelegramQuestionWithAi(text, monitor) {
     "ความยาวไม่เกิน 3,500 ตัวอักษร"
   ].join("\n");
   const userContent = `คำถามจากผู้ใช้:\n${text}\n\nข้อมูลรายงานล่าสุดแบบ JSON:\n${JSON.stringify(context)}`;
+
+  if (ai.apiMode === "gemini-generate-content") {
+    const modelPath = ai.model.startsWith("models/") ? ai.model : `models/${ai.model}`;
+    const response = await fetch(`${ai.baseUrl}/${modelPath}:generateContent?key=${encodeURIComponent(ai.apiKey)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: {
+          parts: [{ text: instructions }]
+        },
+        contents: [
+          {
+            role: "user",
+            parts: [{ text: userContent }]
+          }
+        ],
+        generationConfig: {
+          maxOutputTokens: ai.maxOutputTokens,
+          temperature: 0.2
+        }
+      })
+    });
+    const json = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(json.error?.message || `Gemini API failed (${response.status})`);
+    }
+    return extractGeminiResponseText(json).slice(0, 3900);
+  }
 
   if (ai.apiMode === "chat-completions") {
     const response = await fetch(`${ai.baseUrl}/chat/completions`, {
