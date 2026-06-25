@@ -35,7 +35,8 @@
     "dailySummaryTime": "09:00",
     "timeZone": "Asia/Bangkok",
     "sendOnManualUpdate": false,
-    "allowNaturalLanguage": true
+    "allowNaturalLanguage": true,
+    "allowedUserId": ""
   },
   "line": {
     "enabled": false,

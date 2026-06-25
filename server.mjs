@@ -507,6 +507,7 @@ async function getTelegramConfig() {
   const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET || telegram.webhookSecret || "";
   const dailySummaryTime = process.env.TELEGRAM_DAILY_SUMMARY_TIME || telegram.dailySummaryTime || "";
   const timeZone = process.env.TELEGRAM_TIME_ZONE || telegram.timeZone || "Asia/Bangkok";
+  const ai = getOpenAiConfig();
   return {
     enabled: String(process.env.TELEGRAM_ENABLED || telegram.enabled || "").toLowerCase() === "true" || telegram.enabled === true,
     configured: Boolean(botToken && chatId),
@@ -518,7 +519,11 @@ async function getTelegramConfig() {
     timeZone,
     sendOnManualUpdate: telegram.sendOnManualUpdate === true || String(process.env.TELEGRAM_SEND_ON_MANUAL_UPDATE || "").toLowerCase() === "true",
     allowNaturalLanguage: telegram.allowNaturalLanguage !== false,
-    allowedChatId: String(process.env.TELEGRAM_ALLOWED_CHAT_ID || telegram.allowedChatId || chatId || "").trim()
+    allowedChatId: String(process.env.TELEGRAM_ALLOWED_CHAT_ID || telegram.allowedChatId || chatId || "").trim(),
+    allowedUserId: String(process.env.TELEGRAM_ALLOWED_USER_ID || telegram.allowedUserId || "").trim(),
+    aiEnabled: ai.enabled,
+    aiConfigured: ai.configured,
+    aiModel: ai.model
   };
 }
 
@@ -532,7 +537,26 @@ function publicTelegramConfig(config) {
     timeZone: config.timeZone || "Asia/Bangkok",
     sendOnManualUpdate: Boolean(config.sendOnManualUpdate),
     allowNaturalLanguage: config.allowNaturalLanguage !== false,
+    allowedUserConfigured: Boolean(config.allowedUserId),
+    aiEnabled: Boolean(config.aiEnabled && config.aiConfigured),
     webhookReady: Boolean(config.configured && config.publicBaseUrl && config.webhookSecret)
+  };
+}
+
+function truthyEnv(value) {
+  return /^(1|true|yes|on)$/i.test(String(value || "").trim());
+}
+
+function getOpenAiConfig() {
+  const apiKey = String(process.env.OPENAI_API_KEY || "").trim();
+  const explicitEnabled = process.env.TELEGRAM_AI_ENABLED || process.env.OPENAI_ENABLED || "";
+  const maxOutputTokens = Number(process.env.TELEGRAM_AI_MAX_OUTPUT_TOKENS || process.env.OPENAI_MAX_OUTPUT_TOKENS || 900);
+  return {
+    enabled: explicitEnabled ? truthyEnv(explicitEnabled) : Boolean(apiKey),
+    configured: Boolean(apiKey),
+    apiKey,
+    model: String(process.env.TELEGRAM_AI_MODEL || process.env.OPENAI_MODEL || "gpt-5.5").trim(),
+    maxOutputTokens: Number.isFinite(maxOutputTokens) && maxOutputTokens > 0 ? maxOutputTokens : 900
   };
 }
 
@@ -2911,7 +2935,7 @@ function answerDailyWorkSummary(monitor, options = {}) {
   return lines.join("\n").slice(0, 3900);
 }
 
-function answerTelegramQuestion(text, monitor) {
+function answerTelegramQuestionFallback(text, monitor) {
   const query = normalizeBotText(text);
   if (!query || /^\/?(start|help|ช่วย)/i.test(query) || /ช่วย|ถามอะไรได้|ใช้ยังไง/.test(query)) {
     return buildTelegramHelpMessage();
@@ -2981,6 +3005,166 @@ function answerTelegramQuestion(text, monitor) {
   }
 
   return `${buildTelegramSummaryMessage(monitor)}\n\nยังไม่แน่ใจคำถามเฉพาะนี้ ลองพิมพ์ชื่อตำแหน่งหรือชื่อวิชาเพิ่มอีกนิดครับ`;
+}
+
+function compactTelegramPosition(position) {
+  return {
+    name: position.name || "",
+    group: position.groupLabel || position.group || "",
+    total: position.total || 0,
+    done: position.done || 0,
+    missing: position.missingCount || position.missing || 0,
+    pendingWithClip: position.pendingWithClip || 0,
+    percent: position.percent || "",
+    latestUpdate: position.latestUpdate || "",
+    latestUpdateItem: position.latestUpdateItem || "",
+    facebookUrl: position.facebookUrl || "",
+    closedCourse: String(position.closedCourse || "").toLowerCase() === "true"
+  };
+}
+
+function compactTelegramTask(task) {
+  return {
+    type: task.type || "",
+    priority: task.priority || "",
+    position: task.position || "",
+    group: task.group || "",
+    order: task.order || "",
+    title: task.title || "",
+    detail: task.detail || "",
+    action: task.action || "",
+    score: task.score || 0,
+    matchLevel: task.matchLevel || "",
+    updatedAt: task.updatedAt || ""
+  };
+}
+
+function compactTelegramSubject(subject) {
+  return {
+    position: subject.position || "",
+    group: subject.group || "",
+    order: subject.order || "",
+    title: subject.title || "",
+    clipStatus: clipStatusLabel(subject),
+    documentStatus: documentStatusLabel(subject),
+    needsClipLink: Boolean(subject.needsClipLink),
+    needsDocument: Boolean(subject.needsDocument),
+    hasClip: Boolean(subject.hasClip),
+    latestUpdate: subject.latestUpdate || "",
+    latestUpdateItem: subject.latestUpdateItem || "",
+    closedCourse: String(subject.closedCourse || "").toLowerCase() === "true"
+  };
+}
+
+function buildTelegramAiContext(text, monitor) {
+  const query = normalizeBotText(text);
+  const position = findPositionFromQuestion(query, monitor);
+  const topPositions = [...(monitor.positions || [])]
+    .filter(item => item.missingCount || item.missing || item.pendingWithClip)
+    .sort((a, b) => (b.pendingWithClip || 0) - (a.pendingWithClip || 0) || (b.missingCount || b.missing || 0) - (a.missingCount || a.missing || 0))
+    .slice(0, 12)
+    .map(compactTelegramPosition);
+  const urgentTasks = (monitor.tasks || [])
+    .filter(task => ["urgent", "high"].includes(task.priority))
+    .slice(0, 16)
+    .map(compactTelegramTask);
+  const matchingTasks = searchTasksByQuestion(query, monitor.tasks || [])
+    .slice(0, 16)
+    .map(compactTelegramTask);
+  const matchingSubjects = searchSubjectsByQuestion(query, monitor, 18)
+    .map(compactTelegramSubject);
+  const focusedSubjects = position
+    ? (monitor.subjects || [])
+      .filter(subject => subject.position === position.name)
+      .slice(0, 45)
+      .map(compactTelegramSubject)
+    : [];
+  const documentTasks = (monitor.tasks || [])
+    .filter(task => task.type === "document-missing")
+    .slice(0, 12)
+    .map(compactTelegramTask);
+  const clipReadyTasks = (monitor.tasks || [])
+    .filter(task => task.type === "clip-ready")
+    .slice(0, 12)
+    .map(compactTelegramTask);
+
+  return {
+    generatedAt: monitor.generatedAt || "",
+    summary: monitor.summary || {},
+    deterministicAnswer: answerTelegramQuestionFallback(text, monitor),
+    focusPosition: position ? compactTelegramPosition(position) : null,
+    focusedSubjects,
+    matchingSubjects,
+    matchingTasks,
+    topPositions,
+    urgentTasks,
+    documentTasks,
+    clipReadyTasks,
+    warnings: (monitor.warnings || []).slice(0, 8)
+  };
+}
+
+function extractOpenAiResponseText(json) {
+  if (typeof json.output_text === "string" && json.output_text.trim()) return json.output_text.trim();
+  const parts = [];
+  for (const item of json.output || []) {
+    for (const content of item.content || []) {
+      if (typeof content.text === "string") parts.push(content.text);
+      else if (typeof content.output_text === "string") parts.push(content.output_text);
+    }
+  }
+  return parts.join("\n").trim();
+}
+
+async function answerTelegramQuestionWithAi(text, monitor) {
+  const ai = getOpenAiConfig();
+  if (!ai.enabled || !ai.configured) return "";
+  const context = buildTelegramAiContext(text, monitor);
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${ai.apiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: ai.model,
+      store: false,
+      max_output_tokens: ai.maxOutputTokens,
+      input: [
+        {
+          role: "developer",
+          content: [
+            "คุณคือ AI ผู้ช่วยรายงานงานซุนวูใน Telegram",
+            "ตอบภาษาไทยแบบกระชับ เหมือนผู้ช่วยส่วนตัว ไม่ต้องบอกว่าตัวเองเป็นบอท",
+            "ใช้เฉพาะข้อมูลใน JSON ที่ให้ ถ้าไม่มีข้อมูลให้บอกว่าไม่พบในข้อมูลล่าสุด ห้ามเดา",
+            "ให้ตอบตรงคำถามก่อน แล้วค่อยสรุปรายการสำคัญ",
+            "ถ้าคำถามเกี่ยวกับงานที่ควรทำก่อน ให้จัดลำดับจากงานด่วนและตำแหน่งที่มีคลิปรอตรวจ",
+            "ไม่ต้องใส่ Markdown ตาราง เพราะ Telegram อ่านยาก",
+            "ความยาวไม่เกิน 3,500 ตัวอักษร"
+          ].join("\n")
+        },
+        {
+          role: "user",
+          content: `คำถามจากผู้ใช้:\n${text}\n\nข้อมูลรายงานล่าสุดแบบ JSON:\n${JSON.stringify(context)}`
+        }
+      ]
+    })
+  });
+  const json = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(json.error?.message || `OpenAI API failed (${response.status})`);
+  }
+  return extractOpenAiResponseText(json).slice(0, 3900);
+}
+
+async function answerTelegramQuestion(text, monitor) {
+  try {
+    const aiAnswer = await answerTelegramQuestionWithAi(text, monitor);
+    if (aiAnswer) return aiAnswer;
+  } catch (error) {
+    console.warn(`OpenAI Telegram answer failed: ${error.message}`);
+  }
+  return answerTelegramQuestionFallback(text, monitor);
 }
 
 function splitTelegramText(text) {
@@ -3998,7 +4182,7 @@ async function handleApi(req, res, url) {
         const sheetUrl = config.sheetUrl || "";
         if (!sheetUrl) throw new Error("ยังไม่ได้ตั้งค่า Google Sheet URL");
         const monitor = await loadTaskMonitor(sheetUrl, await getBackgroundSheetAuth(), { includeLocalAudit: true });
-        const answer = answerTelegramQuestion(text, monitor);
+        const answer = await answerTelegramQuestion(text, monitor);
         try {
           await replyLineMessage(event.replyToken, answer, line);
         } catch (replyError) {
@@ -4031,12 +4215,27 @@ async function handleApi(req, res, url) {
     const update = await readRequestJson(req);
     const message = update.message || update.edited_message || {};
     const chatId = String(message.chat?.id || "");
+    const chatType = String(message.chat?.type || "");
+    const userId = String(message.from?.id || "");
     const text = String(message.text || "").trim();
-    if (!telegram.enabled || !telegram.configured || !telegram.allowNaturalLanguage || !chatId || !text) {
+    if (!telegram.enabled || !telegram.botToken || !telegram.allowNaturalLanguage || !chatId || !text) {
       sendJson(res, 200, { ok: true, ignored: true });
       return true;
     }
-    if (telegram.allowedChatId && chatId !== telegram.allowedChatId) {
+
+    if (/^\/?(id|chatid|whoami|telegram\s*id)$/i.test(text)) {
+      await sendTelegramMessage([
+        `Telegram chat id: ${chatId}`,
+        `Telegram user id: ${userId || "-"}`,
+        `Chat type: ${chatType || "-"}`
+      ].join("\n"), telegram, chatId);
+      sendJson(res, 200, { ok: true, identity: true });
+      return true;
+    }
+
+    const allowedByChat = Boolean(telegram.allowedChatId && chatId === telegram.allowedChatId);
+    const allowedByUser = Boolean(telegram.allowedUserId && userId === telegram.allowedUserId && chatType === "private");
+    if ((telegram.allowedChatId || telegram.allowedUserId) && !allowedByChat && !allowedByUser) {
       sendJson(res, 200, { ok: true, ignored: true, reason: "chat-not-allowed" });
       return true;
     }
@@ -4046,7 +4245,7 @@ async function handleApi(req, res, url) {
       const sheetUrl = config.sheetUrl || "";
       if (!sheetUrl) throw new Error("ยังไม่ได้ตั้งค่า Google Sheet URL");
       const monitor = await loadTaskMonitor(sheetUrl, await getBackgroundSheetAuth(), { includeLocalAudit: true });
-      const answer = answerTelegramQuestion(text, monitor);
+      const answer = await answerTelegramQuestion(text, monitor);
       await sendTelegramMessage(answer, telegram, chatId);
       sendJson(res, 200, { ok: true });
     } catch (error) {
@@ -4191,7 +4390,7 @@ async function handleApi(req, res, url) {
       return true;
     }
     const monitor = await loadTaskMonitor(sheetUrl, await getSheetAuth(req), { includeLocalAudit: body.includeLocalAudit !== false });
-    const answer = answerTelegramQuestion(text, monitor);
+    const answer = await answerTelegramQuestion(text, monitor);
     sendJson(res, 200, { ok: true, q: text, answer });
     return true;
   }
